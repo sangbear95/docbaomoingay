@@ -11,6 +11,15 @@ Trang web: https://sangbear95.github.io/docbaomoingay/
 
 Trang chỉ hiện tiêu đề, tóm tắt, ảnh và link. Bấm vào tin sẽ mở bài gốc trên trang báo.
 
+## Tóm tắt bằng AI
+
+Mỗi tin có nút **✦ Tóm tắt AI**. Khi bấm, Claude mở bài gốc, đọc toàn văn rồi viết tóm tắt bằng tiếng Việt: một câu ý chính và 3–5 gạch đầu dòng.
+
+- Cần khóa API của Claude. Tạo khóa tại https://platform.claude.com/settings/keys và nạp tiền vào tài khoản.
+- Lần đầu bấm nút, trang sẽ hỏi khóa. Khóa chỉ lưu trong trình duyệt của bạn (localStorage), không nằm trong mã nguồn hay trên GitHub. Muốn đổi hoặc xóa khóa, bấm **Khóa AI** ở đầu trang.
+- Mỗi bài đã tóm tắt được lưu lại trong trình duyệt, bấm lại không tốn thêm tiền.
+- Mã gọi Claude nằm trong `static/summary.js`. Model dùng là `claude-opus-5-5`, có thể đổi ở biến `MODEL`.
+
 ## Bật GitHub Pages (làm một lần)
 
 Vào **Settings → Pages → Build and deployment → Source**, chọn **GitHub Actions**.

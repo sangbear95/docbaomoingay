@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import html
 import re
+import shutil
 import sys
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -29,6 +30,7 @@ TIMEOUT = 20
 USER_AGENT = "Mozilla/5.0 (compatible; docbaomoingay/1.0; +https://github.com/sangbear95/docbaomoingay)"
 VN_TZ = timezone(timedelta(hours=7))
 OUT_DIR = Path(__file__).parent / "site"
+STATIC_DIR = Path(__file__).parent / "static"
 
 
 def fetch(url: str) -> bytes:
@@ -169,6 +171,7 @@ def render(articles: list[dict], errors: list[str]) -> str:
           <p>{e(a['summary'])}</p>
         </div>
       </a>
+      <div class="ai"><button class="ai-btn" type="button">✦ Tóm tắt AI</button><div class="ai-out" hidden></div></div>
     </article>""")
 
     warning = (
@@ -244,6 +247,40 @@ TEMPLATE = """<!doctype html>
   @media (prefers-color-scheme: dark) {{ .warn {{ background: #3a2f12; color: #f3d98b; }} }}
   .empty {{ text-align: center; color: var(--muted); padding: 40px 0; }}
   .hidden {{ display: none; }}
+  .ai {{ padding: 0 12px 10px; }}
+  .ai-btn, .key-btn {{
+    font: inherit; font-size: 13px; color: var(--muted); background: none; cursor: pointer;
+    border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px;
+  }}
+  .ai-btn:hover, .key-btn:hover {{ color: var(--text); border-color: var(--muted); }}
+  .ai-btn:disabled {{ cursor: wait; opacity: .7; }}
+  .ai-out {{
+    margin-top: 8px; padding: 10px 12px; border-radius: 8px; background: var(--bg);
+    font-size: 15px; line-height: 1.55; white-space: pre-wrap;
+  }}
+  .ai-out.loading {{ color: var(--muted); font-style: italic; }}
+  .ai-out.error {{ background: #fdecea; color: #8a1c12; }}
+  @media (prefers-color-scheme: dark) {{ .ai-out.error {{ background: #3b1916; color: #f5b5ad; }} }}
+  .key-btn {{ margin-left: 8px; }}
+  dialog {{
+    width: min(440px, calc(100% - 32px)); border: 1px solid var(--line); border-radius: 12px;
+    background: var(--card); color: var(--text); padding: 20px;
+  }}
+  dialog::backdrop {{ background: rgb(0 0 0 / .4); }}
+  dialog h3 {{ margin: 0 0 8px; font-size: 18px; }}
+  dialog p {{ display: block; margin: 0 0 12px; -webkit-line-clamp: none; }}
+  dialog a {{ color: inherit; }}
+  dialog input {{
+    width: 100%; padding: 9px 12px; font: inherit; font-size: 15px; color: var(--text);
+    background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
+  }}
+  .dialog-actions {{ display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }}
+  .dialog-actions button {{
+    font: inherit; font-size: 14px; padding: 6px 14px; border-radius: 8px; cursor: pointer;
+    border: 1px solid var(--line); background: none; color: var(--text);
+  }}
+  .dialog-actions .primary {{ background: var(--text); color: var(--card); border-color: var(--text); }}
+  .dialog-actions .remove {{ margin-right: auto; color: var(--muted); }}
   @media (max-width: 520px) {{
     .card a {{ gap: 10px; }}
     .card img {{ order: 2; }}
@@ -258,7 +295,7 @@ TEMPLATE = """<!doctype html>
   <div class="wrap">
     <div class="top">
       <h1>Đọc báo mỗi ngày</h1>
-      <span class="updated">Cập nhật <time id="updated" datetime="{updated_iso}">{updated}</time></span>
+      <span class="updated">Cập nhật <time id="updated" datetime="{updated_iso}">{updated}</time><button class="key-btn" id="key-open" type="button">Khóa AI</button></span>
     </div>
     <input class="search" id="q" type="search" placeholder="Tìm tin…" autocomplete="off">
     <nav class="tabs">
@@ -271,6 +308,21 @@ TEMPLATE = """<!doctype html>
   {cards}
   <p class="empty hidden" id="none">Không có tin phù hợp.</p>
 </main>
+<dialog id="key-dialog">
+  <form method="dialog">
+    <h3>Khóa API của Claude</h3>
+    <p>Nút “Tóm tắt AI” dùng Claude API, tính phí theo tài khoản của bạn. Tạo khóa tại
+      <a href="https://platform.claude.com/settings/keys" target="_blank" rel="noopener">platform.claude.com</a>
+      rồi dán vào đây. Khóa chỉ được lưu trong trình duyệt này.</p>
+    <input id="key-input" type="password" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">
+    <div class="dialog-actions">
+      <button value="remove" class="remove">Xóa khóa</button>
+      <button value="cancel">Hủy</button>
+      <button value="save" class="primary">Lưu</button>
+    </div>
+  </form>
+</dialog>
+<script type="module" src="summary.js"></script>
 <script>
   const cards = [...document.querySelectorAll('.card')];
   const tabs = [...document.querySelectorAll('.tab')];
@@ -279,7 +331,7 @@ TEMPLATE = """<!doctype html>
   try {{ filter = localStorage.getItem('filter') || 'all'; }} catch (e) {{}}
 
   const norm = s => s.toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').replace(/đ/g, 'd');
-  cards.forEach(c => c._text = norm(c.textContent));
+  cards.forEach(c => c._text = norm(c.querySelector('a').textContent));
 
   function apply() {{
     const term = norm(q.value.trim());
@@ -332,6 +384,8 @@ def main() -> int:
     OUT_DIR.mkdir(exist_ok=True)
     out = OUT_DIR / "index.html"
     out.write_text(render(articles, errors), encoding="utf-8")
+    for f in STATIC_DIR.iterdir():
+        shutil.copy2(f, OUT_DIR / f.name)
     print(f"Đã ghi {len(articles)} bài vào {out}")
     return 0
 
