@@ -22,6 +22,26 @@
   }));
   const badImages = new Set();
 
+  // Xin ảnh vừa khung hiển thị thay vì ảnh gốc 1200px (chỉ với báo mà lúc build đã thử thành công).
+  const RESIZE = {
+    vnexpress: (u, w) => u.replace(/([?&])w=\d+/, `$1w=${w}`),
+    tuoitre: (u, w) => u.replace(/\/thumb_w\/\d+\//, `/thumb_w/${w}/`),
+    thanhnien: (u, w) => u.replace(/\/zoom\/(\d+)_(\d+)\//, (m, a, b) => `/zoom/${w}_${Math.round((w * b) / a)}/`),
+  };
+  const RESIZE_PATTERN = {
+    vnexpress: /[?&]w=\d+/, tuoitre: /\/thumb_w\/\d+\//, thanhnien: /\/zoom\/\d+_\d+\//,
+  };
+  const WIDTHS = [240, 480, 800, 1200];
+  const SIZES_LEAD = "(min-width: 1040px) 640px, (min-width: 720px) 50vw, 100vw";
+  const SIZES_CARD = "(min-width: 1040px) 360px, (min-width: 720px) 50vw, 112px";
+  const resizable = new Set(DATA.resize || []);
+  function imgAttrs(url, srcId, lead) {
+    const fn = RESIZE[srcId];
+    if (!resizable.has(srcId) || !RESIZE_PATTERN[srcId].test(url)) return `src="${esc(url)}"`;
+    const srcset = WIDTHS.map((w) => `${esc(fn(url, w))} ${w}w`).join(", ");
+    return `src="${esc(fn(url, 480))}" srcset="${srcset}" sizes="${lead ? SIZES_LEAD : SIZES_CARD}" data-orig="${esc(url)}"`;
+  }
+
   const grid = $("#grid");
   const tabs = $$(".tab");
   const chips = $$(".chip");
@@ -54,7 +74,7 @@
     const time = it.time
       ? `<time datetime="${new Date(it.time * 1000).toISOString()}" data-t="${it.time}">${ago(it.time)}</time>` : "";
     const img = hasImg
-      ? `<div class="thumb"><img src="${esc(it.img)}" alt="" ${lead ? 'fetchpriority="high"' : 'loading="lazy"'} decoding="async" referrerpolicy="no-referrer" data-i="${it.i}"></div>`
+      ? `<div class="thumb"><img ${imgAttrs(it.img, src.id, lead)} alt="" ${lead ? 'fetchpriority="high"' : 'loading="lazy"'} decoding="async" referrerpolicy="no-referrer" data-i="${it.i}"></div>`
       : "";
     const quickBtn = it.hasQuick
       ? `<button class="act quick-btn" type="button" aria-expanded="false">${icon("list")}<span class="label">Tóm tắt nhanh</span>${icon("chev", "chev")}</button>`
@@ -124,6 +144,12 @@
   grid.addEventListener("error", (ev) => {
     const img = ev.target;
     if (img.tagName !== "IMG") return;
+    if (img.dataset.orig) {  // ảnh thu nhỏ lỗi: quay về ảnh gốc
+      img.removeAttribute("srcset");
+      img.src = img.dataset.orig;
+      delete img.dataset.orig;
+      return;
+    }
     badImages.add(Number(img.dataset.i));
     const card = img.closest(".card");
     if (card.classList.contains("lead")) { render(); return; }

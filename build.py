@@ -276,7 +276,49 @@ def safe_json(data) -> str:
     return text.replace("</", "<\\/").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
 
 
-def render(articles: list[dict], errors: list[str]) -> tuple[str, str]:
+# Cách xin ảnh nhỏ hơn từ máy chủ ảnh của từng báo (giống hàm RESIZE trong static/app.js).
+RESIZE_RULES = {
+    "vnexpress": (re.compile(r"([?&])w=\d+"), lambda m, w: f"{m.group(1)}w={w}"),
+    "tuoitre": (re.compile(r"/thumb_w/\d+/"), lambda m, w: f"/thumb_w/{w}/"),
+    "thanhnien": (re.compile(r"/zoom/(\d+)_(\d+)/"),
+                  lambda m, w: f"/zoom/{w}_{round(w * int(m.group(2)) / int(m.group(1)))}/"),
+}
+
+
+def resize_url(source_id: str, url: str, width: int) -> str | None:
+    rule = RESIZE_RULES.get(source_id)
+    if not rule or not rule[0].search(url):
+        return None
+    pattern, repl = rule
+    return pattern.sub(lambda m: repl(m, width), url, count=1)
+
+
+def check_resizable(articles: list[dict]) -> list[str]:
+    """Thử xin một ảnh mẫu cỡ nhỏ của mỗi báo; chỉ báo nào trả về ảnh nhỏ hơn ảnh gốc mới dùng ảnh thu nhỏ."""
+    def probe(src):
+        sample = next((a["image"] for a in articles
+                       if a["source_id"] == src["id"] and resize_url(src["id"], a["image"], 320)), None)
+        if not sample:
+            return src["id"], False, "không có ảnh đúng mẫu"
+        try:
+            small = fetch(resize_url(src["id"], sample, 320))
+            big = fetch(sample)
+        except Exception as exc:
+            return src["id"], False, f"lỗi {exc}"
+        is_image = small[:3] == b"\xff\xd8\xff" or small[:4] in (b"\x89PNG", b"RIFF") or small[:4] == b"GIF8"
+        ok = is_image and len(small) < len(big)
+        return src["id"], ok, f"{len(big) // 1024}KB -> {len(small) // 1024}KB"
+
+    enabled = []
+    with ThreadPoolExecutor(max_workers=len(SOURCES)) as pool:
+        for sid, ok, detail in pool.map(probe, SOURCES):
+            print(f"  Ảnh thu nhỏ {sid}: {'dùng được' if ok else 'không dùng'} ({detail})")
+            if ok:
+                enabled.append(sid)
+    return enabled
+
+
+def render(articles: list[dict], errors: list[str], resizable: list[str] = ()) -> tuple[str, str]:
     """Trả về (index.html, quick.json)."""
     e = html.escape
     now = datetime.now(VN_TZ)
@@ -313,6 +355,7 @@ def render(articles: list[dict], errors: list[str]) -> tuple[str, str]:
         "cats": [[cid, name] for cid, name in CATEGORIES],
         "items": items,
         "quickUrl": f"quick.json?v={now:%Y%m%d%H%M}",
+        "resize": list(resizable),
     }
 
     # Kết nối sớm tới các máy chủ ảnh hay dùng nhất để ảnh hiện nhanh hơn.
@@ -426,14 +469,11 @@ def main() -> int:
     if not articles:
         print("Không lấy được bài nào từ mọi nguồn, giữ nguyên trang cũ.", file=sys.stderr)
         return 1
-    for src in SOURCES:  # ghi lại một ảnh mẫu mỗi báo để tiện kiểm tra kích thước ảnh RSS
-        sample = next((a["image"] for a in articles if a["source_id"] == src["id"] and a["image"]), "")
-        print(f"  Ảnh mẫu {src['name']}: {sample or '(không có)'}")
     summarize.add_summaries(articles, fetch)
     OUT_DIR.mkdir(exist_ok=True)
     out = OUT_DIR / "index.html"
     shutil.copytree(STATIC_DIR, OUT_DIR, dirs_exist_ok=True)
-    page, quick = render(articles, errors)
+    page, quick = render(articles, errors, check_resizable(articles))
     out.write_text(page, encoding="utf-8")
     (OUT_DIR / "quick.json").write_text(quick, encoding="utf-8")
     print(f"Đã ghi {len(articles)} bài vào {out}")
