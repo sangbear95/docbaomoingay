@@ -21,8 +21,9 @@ Mỗi tin có hai nút, đều miễn phí và không cần khóa API:
 
 ## Giao diện
 
-- Khuôn trang nằm trong `build.py` (biến `TEMPLATE` và hàm `render`), kiểu dáng ở `static/style.css`, phần tương tác (lọc, tìm kiếm, xem thêm, sáng/tối, tóm tắt) ở `static/app.js`. Mọi thứ trong `static/` được chép nguyên vào trang khi build.
-- Font **Be Vietnam Pro** (chữ thường) và **Literata** (tiêu đề) được lưu sẵn trong `static/fonts/` nên trang không phải tải gì từ Google. Cả hai dùng giấy phép SIL Open Font License 1.1 (`static/fonts/OFL-*.txt`).
+- `build.py` chỉ tạo khung trang và nhúng dữ liệu tin dạng JSON gọn; `static/app.js` dựng thẻ tin ngay trên trình duyệt, mỗi lần 30 tin (bấm "Xem thêm tin" để hiện tiếp). Tóm tắt nhanh nằm riêng trong `quick.json`, chỉ tải khi trình duyệt rảnh hoặc khi bấm nút. Nhờ vậy trang nhẹ và mở nhanh dù có hàng trăm tin.
+- Kiểu dáng ở `static/style.css`. Mọi thứ trong `static/` được chép nguyên vào trang khi build.
+- Font **Be Vietnam Pro** (chữ thường) và **Literata** (tiêu đề) được lưu sẵn trong `static/fonts/`, đã cắt chỉ giữ chữ Latin và tiếng Việt (3 file, khoảng 52KB), nên trang không phải tải gì từ Google. Cả hai dùng giấy phép SIL Open Font License 1.1 (`static/fonts/OFL-*.txt`).
 - Có chế độ sáng/tối: mặc định theo máy, bấm nút mặt trăng/mặt trời ở góc trên để đổi.
 
 ## Bật GitHub Pages (làm một lần)

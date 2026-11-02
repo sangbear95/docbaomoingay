@@ -7,13 +7,16 @@ Chạy: python3 build.py
 
 from __future__ import annotations
 
+import hashlib
 import html
+import json
 import re
 import shutil
 import urllib.parse
 import sys
 import urllib.request
 import xml.etree.ElementTree as ET
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
@@ -245,81 +248,79 @@ def collect() -> tuple[list[dict], list[str]]:
     return articles, errors
 
 
-ICONS = {
-    "search": '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
-    "moon": '<svg class="icon moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>',
-    "sun": '<svg class="icon sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
-    "list": '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h9M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg>',
-    "chev": '<svg class="icon chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>',
-    "spark": '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 4.6L18.5 9.5l-4.7 1.9L12 16l-1.8-4.6L5.5 9.5l4.7-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>',
-    "up": '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>',
-    "alert": '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>',
-}
+# Biểu tượng dùng chung: khai báo một lần trong trang, các nút tham chiếu bằng <use href="#i-...">.
+ICON_SPRITE = """<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+<symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+<symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></symbol>
+<symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+<symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h9M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></symbol>
+<symbol id="i-chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+<symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3l1.8 4.6L18.5 9.5l-4.7 1.9L12 16l-1.8-4.6L5.5 9.5l4.7-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></symbol>
+<symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></symbol>
+<symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></symbol>
+</svg>"""
 
 
-def render(articles: list[dict], errors: list[str]) -> str:
+def icon(name: str, cls: str = "") -> str:
+    return f'<svg class="icon {cls}" aria-hidden="true"><use href="#i-{name}"/></svg>'
+
+
+def file_version(path: Path) -> str:
+    """Mã ngắn theo nội dung file: file không đổi thì trình duyệt dùng lại bản đã lưu."""
+    return hashlib.sha1(path.read_bytes()).hexdigest()[:10]
+
+
+def safe_json(data) -> str:
+    """JSON để nhúng an toàn trong thẻ <script>."""
+    text = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+    return text.replace("</", "<\\/").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
+
+
+def render(articles: list[dict], errors: list[str]) -> tuple[str, str]:
+    """Trả về (index.html, quick.json)."""
     e = html.escape
     now = datetime.now(VN_TZ)
-    cat_names = dict(CATEGORIES)
-    sources = {src["id"]: src for src in SOURCES}
+    src_index = {src["id"]: i for i, src in enumerate(SOURCES)}
+    cat_index = {cid: i for i, (cid, _) in enumerate(CATEGORIES)}
 
     tabs = [f'<button class="tab" role="tab" data-cat="all">Tất cả<span class="count">{len(articles)}</span></button>']
     for cid, name in CATEGORIES:
         count = sum(1 for a in articles if cid in a["cats"])
         if count:
             tabs.append(f'<button class="tab" role="tab" data-cat="{cid}">{e(name)}<span class="count">{count}</span></button>')
-
     chips = ['<button class="chip" data-src="all">Mọi báo</button>']
     for src in SOURCES:
-        chips.append(
-            f'<button class="chip" data-src="{src["id"]}" style="--c:{src["color"]}">'
-            f'<span class="dot" aria-hidden="true"></span>{e(src["name"])}</button>'
-        )
+        chips.append(f'<button class="chip s-{src["id"]}" data-src="{src["id"]}">'
+                     f'<span class="dot" aria-hidden="true"></span>{e(src["name"])}</button>')
+    source_css = "".join(
+        f'.s-{src["id"]}{{--c:{src["color"]};--cd:{src["color_dark"]}}}' for src in SOURCES
+    )
 
-    cards = []
+    # Mỗi tin: [tiêu đề, link, mô tả, ảnh, chỉ số báo, [chỉ số chuyên mục], giờ đăng (giây), có tóm tắt]
+    items, quick = [], []
     for a in articles:
-        src = sources[a["source_id"]]
         pub = a["published"]
-        iso = pub.isoformat() if pub else ""
-        label = pub.strftime("%H:%M %d/%m") if pub else ""
-        cats = [cat_names[c] for c, _ in CATEGORIES if c in a["cats"]]
-        cat_html = f'<span class="cat">{e(" · ".join(cats[:2]))}</span>' if cats else ""
-        time_html = f'<time datetime="{iso}" title="{label}">{label}</time>' if iso else ""
-        thumb = (
-            f'<div class="thumb"><img src="{e(a["image"])}" alt="" loading="lazy" decoding="async" '
-            f'referrerpolicy="no-referrer" onerror="this.closest(\'.card\').classList.remove(\'has-img\');'
-            f'this.parentNode.remove();window.dispatchEvent(new Event(\'imgfail\'))"></div>' if a["image"] else ""
-        )
-        desc = f'<p class="desc">{e(a["summary"])}</p>' if a["summary"] else ""
-        # Không ngắt dòng giữa tỉ số / khoảng số như "2-0", "2026-2027".
-        title_html = re.sub(r"\d+(?:[-–/:]\d+)+", lambda m: f'<span class="nb">{m.group(0)}</span>', e(a["title"]))
-        prompt = ASK_PROMPT.format(title=a["title"], link=a["link"])
-        ask_url = "https://claude.ai/new?q=" + urllib.parse.quote(prompt)
-        quick = a.get("quick") or []
-        quick_btn = (
-            f'<button class="act quick-btn" type="button" aria-expanded="false">{ICONS["list"]}'
-            f'<span class="label">Tóm tắt nhanh</span>{ICONS["chev"]}</button>' if quick else ""
-        )
-        quick_box = (
-            '<div class="quick" hidden><p class="quick-label">Ý chính</p><ul>'
-            + "".join(f"<li>{e(s)}</li>" for s in quick) + "</ul></div>" if quick else ""
-        )
-        cards.append(f"""
-<article class="card{' has-img' if a['image'] else ''}" data-source="{src['id']}" data-cats="{' '.join(sorted(a['cats']))}" style="--c:{src['color']};--cd:{src['color_dark']}">
-  <a class="card-link" href="{e(a['link'])}" target="_blank" rel="noopener">
-    {thumb}
-    <div class="card-body">
-      <div class="meta"><span class="src">{e(src['name'])}</span>{cat_html}{time_html}</div>
-      <h2 class="title">{title_html}</h2>
-      {desc}
-    </div>
-  </a>
-  <div class="actions">{quick_btn}<a class="act ask" href="{e(ask_url)}" target="_blank" rel="noopener" data-prompt="{e(prompt)}">{ICONS['spark']}<span>Hỏi Claude</span></a></div>
-  {quick_box}
-</article>""")
+        items.append([
+            a["title"], a["link"], a["summary"], a["image"],
+            src_index[a["source_id"]],
+            sorted(cat_index[c] for c in a["cats"]),
+            int(pub.timestamp()) if pub else 0,
+            1 if a.get("quick") else 0,
+        ])
+        quick.append(a.get("quick") or None)
+    data = {
+        "sources": [[src["id"], src["name"]] for src in SOURCES],
+        "cats": [[cid, name] for cid, name in CATEGORIES],
+        "items": items,
+        "quickUrl": f"quick.json?v={now:%Y%m%d%H%M}",
+    }
+
+    # Kết nối sớm tới các máy chủ ảnh hay dùng nhất để ảnh hiện nhanh hơn.
+    hosts = Counter(urllib.parse.urlsplit(a["image"]).netloc for a in articles if a["image"])
+    preconnect = "\n".join(f'<link rel="preconnect" href="https://{h}">' for h, _ in hosts.most_common(4) if h)
 
     notice = (
-        f'<p class="notice">{ICONS["alert"]}<span>Chưa tải được tin từ {e(", ".join(errors))}. '
+        f'<p class="notice">{icon("alert")}<span>Chưa tải được tin từ {e(", ".join(errors))}. '
         f'Trang sẽ thử lại ở lần cập nhật sau.</span></p>' if errors else ""
     )
     source_names = ", ".join(src["name"] for src in SOURCES[:-1]) + " và " + SOURCES[-1]["name"]
@@ -330,23 +331,23 @@ def render(articles: list[dict], errors: list[str]) -> str:
         "UPDATED": now.strftime("%H:%M %d/%m"),
         "TODAY": now.strftime("%d/%m/%Y"),
         "SOURCES": e(source_names),
+        "SOURCE_CSS": source_css,
+        "PRECONNECT": preconnect,
         "TABS": "\n      ".join(tabs),
         "CHIPS": "\n      ".join(chips),
         "NOTICE": notice,
-        "CARDS": "".join(cards),
-        "ICON_SEARCH": ICONS["search"],
-        "ICON_THEME": ICONS["moon"] + ICONS["sun"],
-        "ICON_UP": ICONS["up"],
-        "VERSION": now.strftime("%Y%m%d%H%M"),
+        "SPRITE": ICON_SPRITE,
+        "ICON_SEARCH": icon("search"),
+        "ICON_THEME": icon("moon", "moon") + icon("sun", "sun"),
+        "ICON_UP": icon("up"),
+        "DATA": safe_json(data),
+        "V_FONTS": file_version(STATIC_DIR / "fonts.css"),
+        "V_CSS": file_version(STATIC_DIR / "style.css"),
+        "V_JS": file_version(STATIC_DIR / "app.js"),
     }.items():
         page = page.replace("%%" + key + "%%", value)
-    return page
+    return page, json.dumps(quick, ensure_ascii=False, separators=(",", ":"))
 
-
-ASK_PROMPT = (
-    "Tóm tắt bài báo sau bằng tiếng Việt: một câu nêu ý chính, rồi 3-5 gạch đầu dòng "
-    "về các chi tiết quan trọng (ai, việc gì, khi nào, ở đâu, số liệu).\n\n{title}\n{link}"
-)
 
 TEMPLATE = """<!doctype html>
 <html lang="vi">
@@ -360,11 +361,16 @@ TEMPLATE = """<!doctype html>
 <meta name="theme-color" content="#121210" media="(prefers-color-scheme: dark)">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23b42318'/%3E%3Ctext x='32' y='45' font-family='Georgia,serif' font-size='38' font-weight='700' text-anchor='middle' fill='%23fff'%3EĐ%3C/text%3E%3C/svg%3E">
 <script>try{var t=localStorage.getItem('theme');if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
-<link rel="preload" href="fonts/BeVietnamPro-400-vietnamese.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="fonts.css?v=%%VERSION%%">
-<link rel="stylesheet" href="style.css?v=%%VERSION%%">
+<link rel="preload" href="fonts/BeVietnamPro-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/Literata-600.woff2" as="font" type="font/woff2" crossorigin>
+%%PRECONNECT%%
+<link rel="stylesheet" href="fonts.css?v=%%V_FONTS%%">
+<link rel="stylesheet" href="style.css?v=%%V_CSS%%">
+<style>%%SOURCE_CSS%%</style>
+<script src="app.js?v=%%V_JS%%" defer></script>
 </head>
 <body>
+%%SPRITE%%
 <header class="masthead">
   <div class="wrap">
     <div class="mast-top">
@@ -393,8 +399,8 @@ TEMPLATE = """<!doctype html>
 
 <main class="wrap">
   %%NOTICE%%
-  <div class="grid" id="grid">%%CARDS%%
-  </div>
+  <div class="grid" id="grid" aria-live="polite"></div>
+  <noscript><p class="empty">Trang cần bật JavaScript để hiện tin.</p></noscript>
   <p class="empty" id="empty" hidden>Không có tin phù hợp. Thử chọn chuyên mục khác hoặc đổi từ khóa.</p>
   <div class="more" id="more" hidden><button class="more-btn" id="more-btn" type="button">Xem thêm tin <span></span></button></div>
 </main>
@@ -408,7 +414,7 @@ TEMPLATE = """<!doctype html>
 
 <button class="icon-btn to-top" id="to-top" type="button" aria-label="Lên đầu trang" hidden>%%ICON_UP%%</button>
 <div class="toast" id="toast" role="status" hidden></div>
-<script src="app.js?v=%%VERSION%%" defer></script>
+<script type="application/json" id="data">%%DATA%%</script>
 </body>
 </html>
 """
@@ -420,11 +426,16 @@ def main() -> int:
     if not articles:
         print("Không lấy được bài nào từ mọi nguồn, giữ nguyên trang cũ.", file=sys.stderr)
         return 1
+    for src in SOURCES:  # ghi lại một ảnh mẫu mỗi báo để tiện kiểm tra kích thước ảnh RSS
+        sample = next((a["image"] for a in articles if a["source_id"] == src["id"] and a["image"]), "")
+        print(f"  Ảnh mẫu {src['name']}: {sample or '(không có)'}")
     summarize.add_summaries(articles, fetch)
     OUT_DIR.mkdir(exist_ok=True)
     out = OUT_DIR / "index.html"
-    out.write_text(render(articles, errors), encoding="utf-8")
     shutil.copytree(STATIC_DIR, OUT_DIR, dirs_exist_ok=True)
+    page, quick = render(articles, errors)
+    out.write_text(page, encoding="utf-8")
+    (OUT_DIR / "quick.json").write_text(quick, encoding="utf-8")
     print(f"Đã ghi {len(articles)} bài vào {out}")
     return 0
 
