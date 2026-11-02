@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import html
 import re
+import shutil
 import urllib.parse
 import sys
 import urllib.request
@@ -37,7 +38,7 @@ CATEGORIES = [
 # link dự phòng (báo hay đổi tên mục); script dùng link đầu tiên đọc được.
 SOURCES = [
     {
-        "name": "VnExpress", "id": "vnexpress", "color": "#9f224e",
+        "name": "VnExpress", "id": "vnexpress", "color": "#9f224e", "color_dark": "#ec7aa6",
         "base": "https://vnexpress.net/rss/",
         "latest": ["tin-moi-nhat.rss"],
         "categories": {
@@ -53,7 +54,7 @@ SOURCES = [
         },
     },
     {
-        "name": "Tuổi Trẻ", "id": "tuoitre", "color": "#ed1c24",
+        "name": "Tuổi Trẻ", "id": "tuoitre", "color": "#d71920", "color_dark": "#ff7a74",
         "base": "https://tuoitre.vn/rss/",
         "latest": ["tin-moi-nhat.rss"],
         "categories": {
@@ -69,7 +70,7 @@ SOURCES = [
         },
     },
     {
-        "name": "Thanh Niên", "id": "thanhnien", "color": "#0b5ea8",
+        "name": "Thanh Niên", "id": "thanhnien", "color": "#0b5ea8", "color_dark": "#6cb0ff",
         "base": "https://thanhnien.vn/rss/",
         "latest": ["home.rss"],
         "categories": {
@@ -92,6 +93,7 @@ TIMEOUT = 20
 USER_AGENT = "Mozilla/5.0 (compatible; docbaomoingay/1.0; +https://github.com/sangbear95/docbaomoingay)"
 VN_TZ = timezone(timedelta(hours=7))
 OUT_DIR = Path(__file__).parent / "site"
+STATIC_DIR = Path(__file__).parent / "static"
 
 
 def fetch(url: str) -> bytes:
@@ -243,69 +245,102 @@ def collect() -> tuple[list[dict], list[str]]:
     return articles, errors
 
 
+ICONS = {
+    "search": '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
+    "moon": '<svg class="icon moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>',
+    "sun": '<svg class="icon sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+    "list": '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h9M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg>',
+    "chev": '<svg class="icon chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>',
+    "spark": '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 4.6L18.5 9.5l-4.7 1.9L12 16l-1.8-4.6L5.5 9.5l4.7-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>',
+    "up": '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>',
+    "alert": '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>',
+}
+
+
 def render(articles: list[dict], errors: list[str]) -> str:
     e = html.escape
     now = datetime.now(VN_TZ)
-    colors = {src["id"]: src["color"] for src in SOURCES}
     cat_names = dict(CATEGORIES)
+    sources = {src["id"]: src for src in SOURCES}
 
-    tabs = [f'<button class="tab" data-cat="all">Tất cả <span>{len(articles)}</span></button>']
+    tabs = [f'<button class="tab" role="tab" data-cat="all">Tất cả<span class="count">{len(articles)}</span></button>']
     for cid, name in CATEGORIES:
         count = sum(1 for a in articles if cid in a["cats"])
         if count:
-            tabs.append(f'<button class="tab" data-cat="{cid}">{e(name)} <span>{count}</span></button>')
+            tabs.append(f'<button class="tab" role="tab" data-cat="{cid}">{e(name)}<span class="count">{count}</span></button>')
 
     chips = ['<button class="chip" data-src="all">Mọi báo</button>']
     for src in SOURCES:
-        chips.append(f'<button class="chip" data-src="{src["id"]}" style="--c:{src["color"]}">{e(src["name"])}</button>')
+        chips.append(
+            f'<button class="chip" data-src="{src["id"]}" style="--c:{src["color"]}">'
+            f'<span class="dot" aria-hidden="true"></span>{e(src["name"])}</button>'
+        )
 
     cards = []
     for a in articles:
+        src = sources[a["source_id"]]
         pub = a["published"]
         iso = pub.isoformat() if pub else ""
         label = pub.strftime("%H:%M %d/%m") if pub else ""
-        img = (
-            f'<img src="{e(a["image"])}" alt="" loading="lazy" referrerpolicy="no-referrer" '
-            f'onerror="this.remove()">' if a["image"] else ""
+        cats = [cat_names[c] for c, _ in CATEGORIES if c in a["cats"]]
+        cat_html = f'<span class="cat">{e(" · ".join(cats[:2]))}</span>' if cats else ""
+        time_html = f'<time datetime="{iso}" title="{label}">{label}</time>' if iso else ""
+        thumb = (
+            f'<div class="thumb"><img src="{e(a["image"])}" alt="" loading="lazy" decoding="async" '
+            f'referrerpolicy="no-referrer" onerror="this.closest(\'.card\').classList.remove(\'has-img\');'
+            f'this.parentNode.remove();window.dispatchEvent(new Event(\'imgfail\'))"></div>' if a["image"] else ""
         )
+        desc = f'<p class="desc">{e(a["summary"])}</p>' if a["summary"] else ""
+        # Không ngắt dòng giữa tỉ số / khoảng số như "2-0", "2026-2027".
+        title_html = re.sub(r"\d+(?:[-–/:]\d+)+", lambda m: f'<span class="nb">{m.group(0)}</span>', e(a["title"]))
         prompt = ASK_PROMPT.format(title=a["title"], link=a["link"])
         ask_url = "https://claude.ai/new?q=" + urllib.parse.quote(prompt)
         quick = a.get("quick") or []
-        quick_btn = '<button class="tool-btn quick-btn" type="button">Tóm tắt nhanh</button>' if quick else ""
-        quick_box = (
-            '<ul class="quick" hidden>' + "".join(f"<li>{e(q)}</li>" for q in quick) + "</ul>"
-            if quick else ""
+        quick_btn = (
+            f'<button class="act quick-btn" type="button" aria-expanded="false">{ICONS["list"]}'
+            f'<span class="label">Tóm tắt nhanh</span>{ICONS["chev"]}</button>' if quick else ""
         )
-        cats = [cat_names[c] for c, _ in CATEGORIES if c in a["cats"]]
-        cat_label = f'<span class="cat">{e(" · ".join(cats[:2]))}</span>' if cats else ""
+        quick_box = (
+            '<div class="quick" hidden><p class="quick-label">Ý chính</p><ul>'
+            + "".join(f"<li>{e(s)}</li>" for s in quick) + "</ul></div>" if quick else ""
+        )
         cards.append(f"""
-    <article class="card" data-source="{a['source_id']}" data-cats="{' '.join(sorted(a['cats']))}">
-      <a href="{e(a['link'])}" target="_blank" rel="noopener">
-        {img}
-        <div class="body">
-          <div class="meta"><span class="badge" style="--c:{colors[a['source_id']]}">{e(a['source'])}</span>{cat_label}
-            <time datetime="{iso}" title="{label}">{label}</time></div>
-          <h2>{e(a['title'])}</h2>
-          <p>{e(a['summary'])}</p>
-        </div>
-      </a>
-      <div class="tools">{quick_btn}<a class="tool-btn ask" href="{e(ask_url)}" target="_blank" rel="noopener" data-prompt="{e(prompt)}">Hỏi Claude ↗</a></div>
-      {quick_box}
-    </article>""")
+<article class="card{' has-img' if a['image'] else ''}" data-source="{src['id']}" data-cats="{' '.join(sorted(a['cats']))}" style="--c:{src['color']};--cd:{src['color_dark']}">
+  <a class="card-link" href="{e(a['link'])}" target="_blank" rel="noopener">
+    {thumb}
+    <div class="card-body">
+      <div class="meta"><span class="src">{e(src['name'])}</span>{cat_html}{time_html}</div>
+      <h2 class="title">{title_html}</h2>
+      {desc}
+    </div>
+  </a>
+  <div class="actions">{quick_btn}<a class="act ask" href="{e(ask_url)}" target="_blank" rel="noopener" data-prompt="{e(prompt)}">{ICONS['spark']}<span>Hỏi Claude</span></a></div>
+  {quick_box}
+</article>""")
 
-    warning = (
-        f'<p class="warn">Không tải được tin từ: {e(", ".join(errors))}. Sẽ thử lại ở lần cập nhật sau.</p>'
-        if errors else ""
+    notice = (
+        f'<p class="notice">{ICONS["alert"]}<span>Chưa tải được tin từ {e(", ".join(errors))}. '
+        f'Trang sẽ thử lại ở lần cập nhật sau.</span></p>' if errors else ""
     )
+    source_names = ", ".join(src["name"] for src in SOURCES[:-1]) + " và " + SOURCES[-1]["name"]
 
-    return TEMPLATE.format(
-        updated_iso=now.isoformat(),
-        updated=now.strftime("%H:%M ngày %d/%m/%Y"),
-        tabs="\n      ".join(tabs),
-        chips="\n      ".join(chips),
-        warning=warning,
-        cards="".join(cards) or '<p class="empty">Chưa có tin nào.</p>',
-    )
+    page = TEMPLATE
+    for key, value in {
+        "UPDATED_ISO": now.isoformat(),
+        "UPDATED": now.strftime("%H:%M %d/%m"),
+        "TODAY": now.strftime("%d/%m/%Y"),
+        "SOURCES": e(source_names),
+        "TABS": "\n      ".join(tabs),
+        "CHIPS": "\n      ".join(chips),
+        "NOTICE": notice,
+        "CARDS": "".join(cards),
+        "ICON_SEARCH": ICONS["search"],
+        "ICON_THEME": ICONS["moon"] + ICONS["sun"],
+        "ICON_UP": ICONS["up"],
+        "VERSION": now.strftime("%Y%m%d%H%M"),
+    }.items():
+        page = page.replace("%%" + key + "%%", value)
+    return page
 
 
 ASK_PROMPT = (
@@ -317,212 +352,63 @@ TEMPLATE = """<!doctype html>
 <html lang="vi">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Đọc báo mỗi ngày</title>
-<meta name="description" content="Tin mới nhất từ VnExpress, Tuổi Trẻ, Thanh Niên">
+<meta name="description" content="Tin mới từ %%SOURCES%%, chia theo chuyên mục.">
 <meta name="robots" content="noindex, nofollow">
-<style>
-  :root {{
-    --bg: #f4f4f1; --card: #ffffff; --text: #1d1d1b; --muted: #6b6b66;
-    --line: #e3e3de; --accent: #1d1d1b;
-  }}
-  @media (prefers-color-scheme: dark) {{
-    :root {{
-      --bg: #141413; --card: #1f1f1d; --text: #ececea; --muted: #9a9a94;
-      --line: #2e2e2b; --accent: #ececea;
-    }}
-  }}
-  * {{ box-sizing: border-box; }}
-  body {{
-    margin: 0; background: var(--bg); color: var(--text);
-    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  }}
-  header {{ padding: 12px 16px 0; }}
-  .filters {{
-    position: sticky; top: 0; z-index: 10; background: var(--bg);
-    border-bottom: 1px solid var(--line); padding: 0 16px;
-  }}
-  .wrap {{ max-width: 760px; margin: 0 auto; }}
-  .top {{ display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }}
-  h1 {{ font-size: 22px; margin: 0; letter-spacing: -0.01em; }}
-  .updated {{ color: var(--muted); font-size: 13px; }}
-  .search {{
-    width: 100%; margin: 10px 0 0; padding: 9px 12px; font: inherit; font-size: 15px;
-    color: var(--text); background: var(--card); border: 1px solid var(--line); border-radius: 8px;
-  }}
-  .tabs {{ display: flex; gap: 4px; overflow-x: auto; margin-top: 8px; scrollbar-width: none; }}
-  .tab {{
-    flex: none; font: inherit; font-size: 14px; color: var(--muted); background: none; border: 0;
-    border-bottom: 2px solid transparent; padding: 8px 10px; cursor: pointer;
-  }}
-  .tab span {{ font-size: 12px; opacity: .7; }}
-  .tab.active {{ color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }}
-  .chips {{ display: flex; gap: 6px; overflow-x: auto; padding: 8px 0 10px; scrollbar-width: none; }}
-  .chip {{
-    flex: none; font: inherit; font-size: 13px; color: var(--muted); background: none; cursor: pointer;
-    border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px;
-  }}
-  .chip.active {{ color: var(--card); background: var(--c, var(--text)); border-color: var(--c, var(--text)); }}
-  .cat {{ color: var(--muted); }}
-  .cat::before {{ content: "·"; margin-right: 8px; }}
-  main {{ padding: 12px 16px 40px; }}
-  .card {{ background: var(--card); border: 1px solid var(--line); border-radius: 10px; margin-bottom: 10px; overflow: hidden; }}
-  .card > a {{ display: flex; gap: 14px; padding: 12px; color: inherit; text-decoration: none; }}
-  .card > a:hover h2 {{ text-decoration: underline; }}
-  .card > a:visited h2 {{ color: var(--muted); }}
-  .card img {{ flex: none; width: 128px; height: 86px; object-fit: cover; border-radius: 6px; background: var(--line); }}
-  .body {{ flex: 1; min-width: 0; }}
-  .meta {{ display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }}
-  .badge {{ color: var(--c); font-weight: 700; text-transform: uppercase; letter-spacing: .03em; font-size: 11px; }}
-  @media (prefers-color-scheme: dark) {{ .badge {{ filter: brightness(1.6); }} }}
-  h2 {{ font-size: 16px; line-height: 1.35; margin: 4px 0; }}
-  p {{ margin: 0; font-size: 14px; color: var(--muted);
-       display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }}
-  .warn {{ background: #fff4d6; color: #6b4d00; margin: 0 0 10px; padding: 10px 12px; border-radius: 8px; font-size: 14px; }}
-  @media (prefers-color-scheme: dark) {{ .warn {{ background: #3a2f12; color: #f3d98b; }} }}
-  .empty {{ text-align: center; color: var(--muted); padding: 40px 0; }}
-  .hidden {{ display: none; }}
-  .tools {{ display: flex; gap: 8px; padding: 0 12px 10px; }}
-  .tool-btn {{
-    font: inherit; font-size: 13px; line-height: 1.4; color: var(--muted); background: none; cursor: pointer;
-    border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; text-decoration: none;
-  }}
-  .tool-btn:hover {{ color: var(--text); border-color: var(--muted); }}
-  .quick-btn[aria-expanded="true"] {{ color: var(--text); border-color: var(--muted); }}
-  .quick {{
-    margin: 0 12px 12px; padding: 10px 12px 10px 30px; border-radius: 8px; background: var(--bg);
-    font-size: 15px; line-height: 1.55;
-  }}
-  .quick li + li {{ margin-top: 6px; }}
-  .toast {{
-    position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 20;
-    width: max-content; max-width: calc(100% - 32px); padding: 10px 14px; border-radius: 8px;
-    background: var(--text); color: var(--bg); font-size: 14px; box-shadow: 0 4px 16px rgb(0 0 0 / .2);
-  }}
-  @media (max-width: 520px) {{
-    .card > a {{ gap: 10px; }}
-    .card img {{ order: 2; }}
-    .card img {{ width: 96px; height: 72px; }}
-    h2 {{ font-size: 15px; }}
-    .card p {{ display: none; }}
-  }}
-</style>
+<meta name="theme-color" content="#f5f3ee" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121210" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23b42318'/%3E%3Ctext x='32' y='45' font-family='Georgia,serif' font-size='38' font-weight='700' text-anchor='middle' fill='%23fff'%3EĐ%3C/text%3E%3C/svg%3E">
+<script>try{var t=localStorage.getItem('theme');if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+<link rel="preload" href="fonts/BeVietnamPro-400-vietnamese.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="fonts.css?v=%%VERSION%%">
+<link rel="stylesheet" href="style.css?v=%%VERSION%%">
 </head>
 <body>
-<header>
+<header class="masthead">
   <div class="wrap">
-    <div class="top">
-      <h1>Đọc báo mỗi ngày</h1>
-      <span class="updated">Cập nhật <time id="updated" datetime="{updated_iso}">{updated}</time></span>
+    <div class="mast-top">
+      <p class="dateline" id="dateline">%%TODAY%%</p>
+      <div class="mast-actions">
+        <span class="updated">Cập nhật <time datetime="%%UPDATED_ISO%%">%%UPDATED%%</time></span>
+        <button class="icon-btn theme-toggle" id="theme-toggle" type="button" aria-label="Đổi chế độ sáng/tối">%%ICON_THEME%%</button>
+      </div>
     </div>
-    <input class="search" id="q" type="search" placeholder="Tìm tin…" autocomplete="off">
+    <h1 class="brand">Đọc báo <span>mỗi ngày</span></h1>
+    <p class="tagline">Tin mới từ %%SOURCES%%, tự cập nhật mỗi 30 phút.</p>
+    <label class="search">%%ICON_SEARCH%%<input id="q" type="search" placeholder="Tìm tin theo từ khóa…" autocomplete="off" aria-label="Tìm tin"></label>
   </div>
 </header>
+
 <div class="filters">
   <div class="wrap">
-    <nav class="tabs" aria-label="Chuyên mục">
-      {tabs}
+    <nav class="tabs" role="tablist" aria-label="Chuyên mục">
+      %%TABS%%
     </nav>
-    <div class="chips" role="group" aria-label="Báo">
-      {chips}
+    <div class="sources" role="group" aria-label="Báo">
+      %%CHIPS%%
     </div>
   </div>
 </div>
+
 <main class="wrap">
-  {warning}
-  {cards}
-  <p class="empty hidden" id="none">Không có tin phù hợp.</p>
+  %%NOTICE%%
+  <div class="grid" id="grid">%%CARDS%%
+  </div>
+  <p class="empty" id="empty" hidden>Không có tin phù hợp. Thử chọn chuyên mục khác hoặc đổi từ khóa.</p>
+  <div class="more" id="more" hidden><button class="more-btn" id="more-btn" type="button">Xem thêm tin <span></span></button></div>
 </main>
-<div class="toast" id="toast" hidden></div>
-<script>
-  const cards = [...document.querySelectorAll('.card')];
-  const tabs = [...document.querySelectorAll('.tab')];
-  const chips = [...document.querySelectorAll('.chip')];
-  const q = document.getElementById('q');
-  let cat = 'all', src = 'all';
-  try {{ cat = localStorage.getItem('cat') || 'all'; src = localStorage.getItem('src') || localStorage.getItem('filter') || 'all'; }} catch (e) {{}}
-  if (!tabs.some(t => t.dataset.cat === cat)) cat = 'all';
-  if (!chips.some(c => c.dataset.src === src)) src = 'all';
-  cards.forEach(c => c._cats = c.dataset.cats.split(' '));
-  // Xóa khóa API và tóm tắt AI do bản cũ (đã gỡ) để lại trong trình duyệt.
-  try {{ localStorage.removeItem('anthropic_api_key'); localStorage.removeItem('ai_summaries'); }} catch (e) {{}}
 
-  const norm = s => s.toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').replace(/đ/g, 'd');
-  cards.forEach(c => c._text = norm(c.querySelector('a').textContent));
+<footer class="site-footer">
+  <div class="wrap">
+    <p>Tin tổng hợp từ RSS của %%SOURCES%%. Bấm vào tin để đọc bài gốc trên trang báo.</p>
+    <p>Tóm tắt nhanh là các câu trích từ bài, không phải do AI viết.</p>
+  </div>
+</footer>
 
-  function apply() {{
-    const term = norm(q.value.trim());
-    let shown = 0;
-    tabs.forEach(t => t.classList.toggle('active', t.dataset.cat === cat));
-    chips.forEach(c => c.classList.toggle('active', c.dataset.src === src));
-    cards.forEach(c => {{
-      const ok = (cat === 'all' || c._cats.includes(cat))
-        && (src === 'all' || c.dataset.source === src)
-        && (!term || c._text.includes(term));
-      c.classList.toggle('hidden', !ok);
-      if (ok) shown++;
-    }});
-    document.getElementById('none').classList.toggle('hidden', shown > 0 || !cards.length);
-  }}
-  tabs.forEach(t => t.addEventListener('click', () => {{
-    cat = t.dataset.cat;
-    try {{ localStorage.setItem('cat', cat); }} catch (e) {{}}
-    apply();
-    window.scrollTo({{ top: 0 }});
-  }}));
-  chips.forEach(c => c.addEventListener('click', () => {{
-    src = c.dataset.src;
-    try {{ localStorage.setItem('src', src); }} catch (e) {{}}
-    apply();
-  }}));
-  q.addEventListener('input', apply);
-  apply();
-  // Cuộn hàng tab để tab/báo đang chọn nằm trong màn hình.
-  for (const el of [document.querySelector('.tab.active'), document.querySelector('.chip.active')]) {{
-    const row = el.parentElement;
-    row.scrollLeft = el.offsetLeft - row.offsetLeft - (row.clientWidth - el.offsetWidth) / 2;
-  }}
-
-  let toastTimer;
-  function toast(msg) {{
-    const t = document.getElementById('toast');
-    t.textContent = msg; t.hidden = false;
-    clearTimeout(toastTimer); toastTimer = setTimeout(() => t.hidden = true, 5000);
-  }}
-  document.querySelector('main').addEventListener('click', ev => {{
-    const quick = ev.target.closest('.quick-btn');
-    if (quick) {{
-      const box = quick.closest('.card').querySelector('.quick');
-      box.hidden = !box.hidden;
-      quick.setAttribute('aria-expanded', String(!box.hidden));
-      quick.textContent = box.hidden ? 'Tóm tắt nhanh' : 'Ẩn tóm tắt';
-      return;
-    }}
-    const ask = ev.target.closest('.ask');
-    if (ask && navigator.clipboard) {{
-      navigator.clipboard.writeText(ask.dataset.prompt)
-        .then(() => toast('Đã chép câu hỏi. Nếu ô chat trên Claude còn trống, chỉ cần dán vào rồi gửi.'))
-        .catch(() => {{}});
-    }}
-  }});
-
-  function ago(iso) {{
-    if (!iso) return '';
-    const m = Math.round((Date.now() - new Date(iso)) / 60000);
-    if (m < 1) return 'vừa xong';
-    if (m < 60) return m + ' phút trước';
-    if (m < 1440) return Math.round(m / 60) + ' giờ trước';
-    return Math.round(m / 1440) + ' ngày trước';
-  }}
-  function tick() {{
-    document.querySelectorAll('time[datetime]').forEach(t => {{
-      const s = ago(t.getAttribute('datetime'));
-      if (s) t.textContent = s;
-    }});
-  }}
-  tick();
-  setInterval(tick, 60000);
-</script>
+<button class="icon-btn to-top" id="to-top" type="button" aria-label="Lên đầu trang" hidden>%%ICON_UP%%</button>
+<div class="toast" id="toast" role="status" hidden></div>
+<script src="app.js?v=%%VERSION%%" defer></script>
 </body>
 </html>
 """
@@ -538,6 +424,7 @@ def main() -> int:
     OUT_DIR.mkdir(exist_ok=True)
     out = OUT_DIR / "index.html"
     out.write_text(render(articles, errors), encoding="utf-8")
+    shutil.copytree(STATIC_DIR, OUT_DIR, dirs_exist_ok=True)
     print(f"Đã ghi {len(articles)} bài vào {out}")
     return 0
 

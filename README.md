@@ -19,6 +19,12 @@ Mỗi tin có hai nút, đều miễn phí và không cần khóa API:
 - **Tóm tắt nhanh**: 3 câu quan trọng nhất trong bài, hiện ngay dưới tin. `summarize.py` làm sẵn lúc cập nhật trang: tải bài gốc, tìm phần thân bài, chấm điểm từng câu (từ khóa lặp lại nhiều, câu ở đầu bài, câu có số liệu) rồi chọn câu điểm cao nhất. Đây là trích câu có sẵn, không phải AI viết lại. Bài đã tóm tắt được lưu trong `cache/` (qua GitHub Actions cache) nên mỗi lần chỉ tải bài mới.
 - **Hỏi Claude ↗**: mở claude.ai với câu hỏi tóm tắt bài đó, dùng tài khoản Claude.ai của bạn. Câu hỏi cũng được chép vào bộ nhớ tạm; nếu ô chat còn trống thì dán vào rồi gửi. Claude cần được bật tính năng tìm kiếm web để mở được link bài.
 
+## Giao diện
+
+- Khuôn trang nằm trong `build.py` (biến `TEMPLATE` và hàm `render`), kiểu dáng ở `static/style.css`, phần tương tác (lọc, tìm kiếm, xem thêm, sáng/tối, tóm tắt) ở `static/app.js`. Mọi thứ trong `static/` được chép nguyên vào trang khi build.
+- Font **Be Vietnam Pro** (chữ thường) và **Literata** (tiêu đề) được lưu sẵn trong `static/fonts/` nên trang không phải tải gì từ Google. Cả hai dùng giấy phép SIL Open Font License 1.1 (`static/fonts/OFL-*.txt`).
+- Có chế độ sáng/tối: mặc định theo máy, bấm nút mặt trăng/mặt trời ở góc trên để đổi.
+
 ## Bật GitHub Pages (làm một lần)
 
 Vào **Settings → Pages → Build and deployment → Source**, chọn **GitHub Actions**.
