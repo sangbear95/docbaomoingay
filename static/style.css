@@ -126,39 +126,30 @@ button { font: inherit; color: inherit; }
 }
 .filters.is-stuck { box-shadow: 0 6px 16px rgb(0 0 0 / .06); }
 .filters.is-hidden { transform: translateY(-100%); box-shadow: none; }
-.tabs, .sources { overscroll-behavior-x: contain; }
-.tabs, .sources {
+.tabs { overscroll-behavior-x: contain; }
+.tabs {
   display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none;
   -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent);
   mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent);
 }
-.tabs::-webkit-scrollbar, .sources::-webkit-scrollbar { display: none; }
+.tabs::-webkit-scrollbar { display: none; }
 .tab {
   flex: none; position: relative; padding: 13px 12px 12px; border: 0; background: none; cursor: pointer;
-  font-size: 15px; font-weight: 400; color: var(--muted); white-space: nowrap; transition: color .15s;
+  font-size: 15px; font-weight: 400; color: var(--text-2); white-space: nowrap; transition: color .15s;
 }
 .tab:first-child { padding-left: 0; }
 .tab:hover { color: var(--text); }
-.tab .count { margin-left: 3px; font-size: 12px; font-weight: 400; opacity: .75; font-variant-numeric: tabular-nums; }
-.tab.active { color: var(--text); font-weight: 600; }
+.tab .count { display: none; margin-left: 4px; font-size: 12px; font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tab.active .count { display: inline; }
+.tab.active { color: var(--accent); font-weight: 600; }
 .tab.active::after {
   content: ""; position: absolute; left: 12px; right: 12px; bottom: -1px; height: 3px;
   border-radius: 3px 3px 0 0; background: var(--accent);
 }
 .tab:first-child.active::after { left: 0; }
-.sources { gap: 8px; padding: 2px 0 12px; }
-.chip {
-  flex: none; display: inline-flex; align-items: center; gap: 7px;
-  height: 32px; padding: 0 14px; border-radius: 999px; cursor: pointer;
-  border: 1px solid var(--line); background: var(--surface); color: var(--text-2);
-  font-size: 13.5px; font-weight: 400; white-space: nowrap; transition: background .15s, color .15s, border-color .15s;
-}
-.chip:hover { border-color: var(--muted); }
-.chip .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c, var(--muted)); }
-.chip.active { background: var(--text); border-color: var(--text); color: var(--bg); }
 
 /* ---------- danh sách tin ---------- */
-main { padding-top: 18px; padding-bottom: 40px; }
+main { padding-top: 18px; padding-bottom: 48px; }
 .notice {
   display: flex; gap: 10px; align-items: flex-start; margin: 0 0 16px; padding: 12px 14px;
   border-radius: 12px; font-size: 14px; background: #fff3d6; color: #6b4b00;
@@ -289,7 +280,7 @@ main { padding-top: 18px; padding-bottom: 40px; }
 
 /* ---------- chân trang + nút nổi ---------- */
 .site-footer {
-  border-top: 1px solid var(--line); padding: 24px 0 calc(40px + env(safe-area-inset-bottom)); color: var(--muted); font-size: 13.5px; text-align: center;
+  border-top: 1px solid var(--line); padding: 24px 0 calc(96px + env(safe-area-inset-bottom)); color: var(--muted); font-size: 13.5px; text-align: center;
 }
 .site-footer p { margin: 4px 0; }
 .to-top {
@@ -298,7 +289,7 @@ main { padding-top: 18px; padding-bottom: 40px; }
   width: 44px; height: 44px; box-shadow: var(--shadow-hover);
 }
 .toast {
-  position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 40;
+  position: fixed; left: 50%; bottom: calc(84px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 40;
   width: max-content; max-width: calc(100% - 32px); padding: 12px 16px; border-radius: 12px;
   background: var(--text); color: var(--bg); font-size: 14px; box-shadow: var(--shadow-hover);
 }
@@ -311,7 +302,8 @@ main { padding-top: 18px; padding-bottom: 40px; }
 /* ---------- phản hồi khi chạm (màn hình cảm ứng) ---------- */
 @media (hover: none) {
   .card-link:active { background: var(--surface-2); }
-  .act:active, .chip:active, .icon-btn:active, .more-btn:active { transform: scale(.96); }
+  .act:active, .src-toggle:active, .icon-btn:active, .more-btn:active { transform: scale(.96); }
+  .src-opt:active { background: var(--surface-2); }
   .tab:active { color: var(--text); }
 }
 
@@ -337,8 +329,6 @@ main { padding-top: 18px; padding-bottom: 40px; }
 @media (max-width: 719px) {
   .tab { padding: 12px 11px 11px; font-size: 15px; }
   .tab.active::after { left: 11px; right: 11px; }
-  .sources { padding: 0 0 10px; }
-  .chip { height: 36px; padding: 0 14px; font-size: 14px; }
 
   main { padding-top: 12px; }
   .grid { gap: 10px; }
@@ -362,3 +352,60 @@ main { padding-top: 18px; padding-bottom: 40px; }
   .more { margin-top: 20px; }
   .to-top { width: 46px; height: 46px; }
 }
+
+/* ---------- nút chọn báo nổi ở cạnh dưới (thu gọn / mở ra) ---------- */
+.src-float {
+  position: fixed; z-index: 35; left: 50%; transform: translateX(-50%);
+  bottom: calc(18px + env(safe-area-inset-bottom));
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  transition: transform .25s ease, opacity .2s;
+}
+.src-float.is-away { transform: translate(-50%, 140%); opacity: 0; pointer-events: none; }
+.src-toggle {
+  display: inline-flex; align-items: center; gap: 8px; height: 46px; padding: 0 16px 0 14px;
+  border: 1px solid var(--line); border-radius: 999px; cursor: pointer;
+  background: var(--surface); color: var(--text); font-size: 14.5px; font-weight: 600; white-space: nowrap;
+  box-shadow: 0 2px 6px rgb(0 0 0 / .08), 0 10px 28px rgb(0 0 0 / .14);
+  transition: transform .15s, background .15s;
+}
+.src-toggle .paper { color: var(--muted); }
+.src-toggle .chev-up { width: 16px; height: 16px; color: var(--muted); transform: rotate(180deg); transition: transform .2s; }
+.src-toggle[aria-expanded="true"] .chev-up { transform: rotate(0deg); }
+.src-toggle .dot, .src-opt .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; background: var(--c, var(--muted)); }
+.src-toggle .dot { display: none; }
+.src-float.filtered .src-toggle .dot { display: block; }
+.src-float.filtered .src-toggle .paper { display: none; }
+.src-float.filtered .src-toggle { border-color: var(--c); }
+.dot-all { background: conic-gradient(#9f224e 0 33%, #d71920 0 66%, #0b5ea8 0) !important; }
+
+.src-panel {
+  width: min(300px, calc(100vw - 32px)); padding: 8px; border-radius: 18px;
+  background: var(--surface); border: 1px solid var(--line);
+  box-shadow: 0 4px 12px rgb(0 0 0 / .08), 0 18px 48px rgb(0 0 0 / .18);
+  transform-origin: 50% 100%; animation: pop-in .16s ease-out;
+}
+@keyframes pop-in { from { opacity: 0; transform: translateY(8px) scale(.97); } to { opacity: 1; transform: none; } }
+.src-panel-title {
+  margin: 4px 10px 6px; font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted);
+}
+.src-opt {
+  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 48px; padding: 0 12px;
+  border: 0; border-radius: 12px; background: none; cursor: pointer; text-align: left;
+  font-size: 16px; color: var(--text); transition: background .12s;
+}
+.src-opt:hover { background: var(--surface-2); }
+.src-opt .src-name { flex: 1; }
+.src-opt .src-count { color: var(--muted); font-size: 13.5px; font-variant-numeric: tabular-nums; }
+.src-opt .check { width: 18px; height: 18px; color: var(--accent); visibility: hidden; }
+.src-opt.active { font-weight: 600; background: var(--surface-2); }
+.src-opt.active .check { visibility: visible; }
+.src-opt[disabled] { opacity: .45; cursor: default; }
+:root[data-theme="dark"] .src-toggle .dot, :root[data-theme="dark"] .src-opt .dot { background: var(--cd, var(--muted)); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .src-toggle .dot, :root:not([data-theme="light"]) .src-opt .dot { background: var(--cd, var(--muted)); }
+}
+/* nút lên đầu trang nằm cao bằng nút chọn báo, không chồng lên nhau */
+.to-top { bottom: calc(18px + env(safe-area-inset-bottom)); }
+@media (prefers-reduced-motion: reduce) { .src-panel { animation: none; } }
+:root[data-theme="dark"] .src-float.filtered .src-toggle { border-color: var(--cd); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .src-float.filtered .src-toggle { border-color: var(--cd); } }

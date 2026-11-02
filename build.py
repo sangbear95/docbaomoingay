@@ -256,6 +256,8 @@ ICON_SPRITE = """<svg width="0" height="0" style="position:absolute" aria-hidden
 <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h9M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></symbol>
 <symbol id="i-chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
 <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3l1.8 4.6L18.5 9.5l-4.7 1.9L12 16l-1.8-4.6L5.5 9.5l4.7-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></symbol>
+<symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+<symbol id="i-paper" viewBox="0 0 24 24"><path d="M5 4h11a1 1 0 0 1 1 1v14a1 1 0 0 0 2 0V8h1a1 1 0 0 1 1 1v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a1 1 0 0 1 1-1z"/><path d="M8 8h6M8 12h6M8 16h4"/></symbol>
 <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></symbol>
 <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></symbol>
 </svg>"""
@@ -330,10 +332,14 @@ def render(articles: list[dict], errors: list[str], resizable: list[str] = ()) -
         count = sum(1 for a in articles if cid in a["cats"])
         if count:
             tabs.append(f'<button class="tab" role="tab" data-cat="{cid}">{e(name)}<span class="count">{count}</span></button>')
-    chips = ['<button class="chip" data-src="all">Mọi báo</button>']
+    # Các lựa chọn báo trong bảng nổi (số tin được app.js điền theo chuyên mục đang xem).
+    chips = ['<button class="src-opt" type="button" data-src="all"><span class="dot dot-all" aria-hidden="true"></span>'
+             '<span class="src-name">Mọi báo</span><span class="src-count"></span>'
+             f'{icon("check", "check")}</button>']
     for src in SOURCES:
-        chips.append(f'<button class="chip s-{src["id"]}" data-src="{src["id"]}">'
-                     f'<span class="dot" aria-hidden="true"></span>{e(src["name"])}</button>')
+        chips.append(f'<button class="src-opt s-{src["id"]}" type="button" data-src="{src["id"]}">'
+                     f'<span class="dot" aria-hidden="true"></span><span class="src-name">{e(src["name"])}</span>'
+                     f'<span class="src-count"></span>{icon("check", "check")}</button>')
     source_css = "".join(
         f'.s-{src["id"]}{{--c:{src["color"]};--cd:{src["color_dark"]}}}' for src in SOURCES
     )
@@ -383,6 +389,8 @@ def render(articles: list[dict], errors: list[str], resizable: list[str] = ()) -
         "ICON_SEARCH": icon("search"),
         "ICON_THEME": icon("moon", "moon") + icon("sun", "sun"),
         "ICON_UP": icon("up"),
+        "ICON_PAPER": icon("paper", "paper"),
+        "ICON_CHEV_UP": icon("chev", "chev-up"),
         "DATA": safe_json(data),
         "V_FONTS": file_version(STATIC_DIR / "fonts.css"),
         "V_CSS": file_version(STATIC_DIR / "style.css"),
@@ -441,9 +449,6 @@ TEMPLATE = """<!doctype html>
     <nav class="tabs" role="tablist" aria-label="Chuyên mục">
       %%TABS%%
     </nav>
-    <div class="sources" role="group" aria-label="Báo">
-      %%CHIPS%%
-    </div>
   </div>
 </div>
 
@@ -462,6 +467,15 @@ TEMPLATE = """<!doctype html>
   </div>
 </footer>
 
+<div class="src-float" id="src-float">
+  <div class="src-panel" id="src-panel" role="group" aria-label="Chọn báo" hidden>
+    <p class="src-panel-title">Chọn báo</p>
+    %%CHIPS%%
+  </div>
+  <button class="src-toggle" id="src-toggle" type="button" aria-expanded="false" aria-controls="src-panel" aria-label="Chọn báo">
+    %%ICON_PAPER%%<span class="dot" id="src-dot" aria-hidden="true"></span><span class="src-current" id="src-current">Mọi báo</span>%%ICON_CHEV_UP%%
+  </button>
+</div>
 <button class="icon-btn to-top" id="to-top" type="button" aria-label="Lên đầu trang" hidden>%%ICON_UP%%</button>
 <div class="toast" id="toast" role="status" hidden></div>
 <script type="application/json" id="data">%%DATA%%</script>

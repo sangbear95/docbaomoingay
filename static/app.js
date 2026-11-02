@@ -44,7 +44,10 @@
 
   const grid = $("#grid");
   const tabs = $$(".tab");
-  const chips = $$(".chip");
+  const srcOpts = $$(".src-opt");
+  const srcFloat = $("#src-float");
+  const srcPanel = $("#src-panel");
+  const srcToggle = $("#src-toggle");
   const q = $("#q");
   const moreWrap = $("#more");
   const moreBtn = $("#more-btn");
@@ -53,7 +56,7 @@
   // ---------- tiện ích ----------
   const ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ESC[c]);
-  const norm = (s) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/g, "d");
+  const norm = (s) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d");
   const icon = (name, cls = "") => `<svg class="icon ${cls}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
 
   function ago(seconds) {
@@ -91,19 +94,39 @@
   let cat = store.get("cat") || "all";
   let src = store.get("src") || store.get("filter") || "all";
   if (!tabs.some((t) => t.dataset.cat === cat)) cat = "all";
-  if (!chips.some((c) => c.dataset.src === src)) src = "all";
+  if (!srcOpts.some((c) => c.dataset.src === src)) src = "all";
   let matched = [];
   let shown = 0;
 
+  let srcCounts = [];
   function filter() {
     const term = norm(q.value.trim());
     const catIdx = CATS.findIndex((c) => c.id === cat);
     const srcIdx = SOURCES.findIndex((s) => s.id === src);
-    matched = ITEMS.filter((it) =>
+    // Tin theo chuyên mục + từ khóa (chưa lọc báo) để đếm số tin của từng báo.
+    const base = ITEMS.filter((it) =>
       (catIdx < 0 || it.cats.includes(catIdx)) &&
-      (srcIdx < 0 || it.src === srcIdx) &&
       (!term || (it._text ??= norm(it.title + " " + it.desc)).includes(term)));
+    srcCounts = SOURCES.map((_, k) => base.filter((it) => it.src === k).length);
+    matched = srcIdx < 0 ? base : base.filter((it) => it.src === srcIdx);
     return term;
+  }
+
+  function updateSourceUI() {
+    const total = srcCounts.reduce((a, b) => a + b, 0);
+    for (const opt of srcOpts) {
+      const k = SOURCES.findIndex((s) => s.id === opt.dataset.src);
+      const n = k < 0 ? total : srcCounts[k];
+      const on = opt.dataset.src === src;
+      opt.classList.toggle("active", on);
+      opt.setAttribute("aria-pressed", on);
+      opt.disabled = n === 0 && !on && k >= 0;
+      $(".src-count", opt).textContent = n;
+    }
+    const cur = SOURCES.find((s) => s.id === src);
+    $("#src-current").textContent = cur ? cur.name : "Mọi báo";
+    srcFloat.className = "src-float" + (cur ? ` filtered s-${cur.id}` : "") + (srcFloat.classList.contains("is-away") ? " is-away" : "");
+    srcToggle.setAttribute("aria-label", `Đang xem: ${cur ? cur.name : "Mọi báo"}. Bấm để chọn báo khác`);
   }
 
   function updateMore() {
@@ -114,7 +137,7 @@
   function render() {
     const term = filter();
     tabs.forEach((t) => { const on = t.dataset.cat === cat; t.classList.toggle("active", on); t.setAttribute("aria-selected", on); });
-    chips.forEach((c) => { const on = c.dataset.src === src; c.classList.toggle("active", on); c.setAttribute("aria-pressed", on); });
+    updateSourceUI();
     shown = Math.min(PAGE, matched.length);
     const first = matched[0];
     const leadOk = first && !term && first.img && !badImages.has(first.i);
@@ -146,10 +169,20 @@
     centerInRow(t, true);
     if (window.scrollY > filtersHome()) window.scrollTo({ top: filtersHome() });
   }));
-  chips.forEach((c) => c.addEventListener("click", () => {
-    src = c.dataset.src; store.set("src", src); render();
-    centerInRow(c, true);
+  // Bảng chọn báo nổi: bấm nút để mở / thu gọn; chọn xong, bấm ra ngoài hoặc Esc thì tự thu gọn.
+  function setPanel(open) {
+    srcPanel.hidden = !open;
+    srcToggle.setAttribute("aria-expanded", String(open));
+    if (open) $(".src-opt.active", srcPanel)?.focus({ preventScroll: true });
+  }
+  srcToggle.addEventListener("click", () => setPanel(srcPanel.hidden));
+  srcOpts.forEach((opt) => opt.addEventListener("click", () => {
+    src = opt.dataset.src; store.set("src", src); render();
+    setPanel(false);
+    if (window.scrollY > filtersHome()) window.scrollTo({ top: filtersHome() });
   }));
+  document.addEventListener("click", (ev) => { if (!srcPanel.hidden && !srcFloat.contains(ev.target)) setPanel(false); });
+  document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && !srcPanel.hidden) { setPanel(false); srcToggle.focus(); } });
   let searchTimer;
   q.addEventListener("input", () => { clearTimeout(searchTimer); searchTimer = setTimeout(render, 120); });
   q.addEventListener("keydown", (ev) => { if (ev.key === "Enter") q.blur(); });  // ẩn bàn phím điện thoại
@@ -181,7 +214,6 @@
   render();
 
   centerInRow($(".tab.active"));
-  centerInRow($(".chip.active"));
 
   // ---------- tóm tắt nhanh (tải riêng, khi rảnh hoặc khi bấm) ----------
   let quickPromise = null;
@@ -286,9 +318,12 @@
     if (phone.matches && document.activeElement !== q) {
       if (dy > 6 && y > home + 200) filters.classList.add("is-hidden");
       else if (dy < -6 || !stuck) filters.classList.remove("is-hidden");
+      // Nút chọn báo nổi cũng tạm ẩn khi cuộn xuống đọc (trừ khi bảng đang mở), hiện lại khi cuộn lên.
+      if (srcPanel.hidden && Math.abs(dy) > 6) srcFloat.classList.toggle("is-away", dy > 0 && y > home + 200);
       if (Math.abs(dy) > 6) toTop.hidden = !(y > 900 && dy < 0);
     } else {
       filters.classList.remove("is-hidden");
+      srcFloat.classList.remove("is-away");
       toTop.hidden = y < 900;
     }
     if (Math.abs(dy) > 6 || y < 10) lastY = y;

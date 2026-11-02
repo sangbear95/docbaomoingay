@@ -25,7 +25,8 @@ Mỗi tin có hai nút, đều miễn phí và không cần khóa API:
 - Kiểu dáng ở `static/style.css`. Mọi thứ trong `static/` được chép nguyên vào trang khi build.
 - Font **Be Vietnam Pro** (chữ thường) và **Literata** (tiêu đề) được lưu sẵn trong `static/fonts/`, đã cắt chỉ giữ chữ Latin và tiếng Việt (3 file, khoảng 52KB), nên trang không phải tải gì từ Google. Cả hai dùng giấy phép SIL Open Font License 1.1 (`static/fonts/OFL-*.txt`).
 - Có chế độ sáng/tối: mặc định theo máy, bấm nút mặt trăng/mặt trời ở góc trên để đổi.
-- Trên điện thoại: đầu trang thu gọn, thanh chuyên mục tự ẩn khi cuộn xuống và hiện lại khi cuộn lên, tự tải thêm tin khi gần cuối danh sách.
+- Chọn báo bằng nút nổi ở cạnh dưới màn hình: bấm để mở bảng chọn (có số tin của từng báo trong chuyên mục đang xem), chọn xong tự thu gọn.
+- Trên điện thoại: đầu trang thu gọn, thanh chuyên mục và nút chọn báo tự ẩn khi cuộn xuống và hiện lại khi cuộn lên, tự tải thêm tin khi gần cuối danh sách.
 - Thêm được vào màn hình chính như một app (Safari: Chia sẻ → Thêm vào MH chính; Chrome: ⋮ → Thêm vào màn hình chính). Biểu tượng ở `static/icons/`, thông tin app ở `static/manifest.webmanifest`.
 
 ## Bật GitHub Pages (làm một lần)
