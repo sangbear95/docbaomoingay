@@ -7,18 +7,17 @@ Trang web: https://sangbear95.github.io/docbaomoingay/
 ## Cách hoạt động
 
 1. `build.py` đọc RSS của các báo, gộp lại, bỏ bài trùng, sắp xếp theo thời gian và tạo file `site/index.html`.
-2. GitHub Actions (`.github/workflows/pages.yml`) chạy script mỗi 30 phút rồi đăng trang lên GitHub Pages.
+2. `summarize.py` tải các bài mới và chọn ra vài câu tóm tắt.
+3. GitHub Actions (`.github/workflows/pages.yml`) chạy script mỗi 30 phút rồi đăng trang lên GitHub Pages.
 
 Trang chỉ hiện tiêu đề, tóm tắt, ảnh và link. Bấm vào tin sẽ mở bài gốc trên trang báo.
 
-## Tóm tắt bằng AI
+## Tóm tắt
 
-Mỗi tin có nút **✦ Tóm tắt AI**. Khi bấm, Claude mở bài gốc, đọc toàn văn rồi viết tóm tắt bằng tiếng Việt: một câu ý chính và 3–5 gạch đầu dòng.
+Mỗi tin có hai nút, đều miễn phí và không cần khóa API:
 
-- Cần khóa API của Claude. Tạo khóa tại https://platform.claude.com/settings/keys và nạp tiền vào tài khoản.
-- Lần đầu bấm nút, trang sẽ hỏi khóa. Khóa chỉ lưu trong trình duyệt của bạn (localStorage), không nằm trong mã nguồn hay trên GitHub. Muốn đổi hoặc xóa khóa, bấm **Khóa AI** ở đầu trang.
-- Mỗi bài đã tóm tắt được lưu lại trong trình duyệt, bấm lại không tốn thêm tiền.
-- Mã gọi Claude nằm trong `static/summary.js`. Model dùng là `claude-opus-5-5`, có thể đổi ở biến `MODEL`.
+- **Tóm tắt nhanh**: 3 câu quan trọng nhất trong bài, hiện ngay dưới tin. `summarize.py` làm sẵn lúc cập nhật trang: tải bài gốc, tìm phần thân bài, chấm điểm từng câu (từ khóa lặp lại nhiều, câu ở đầu bài, câu có số liệu) rồi chọn câu điểm cao nhất. Đây là trích câu có sẵn, không phải AI viết lại. Bài đã tóm tắt được lưu trong `cache/` (qua GitHub Actions cache) nên mỗi lần chỉ tải bài mới.
+- **Hỏi Claude ↗**: mở claude.ai với câu hỏi tóm tắt bài đó, dùng tài khoản Claude.ai của bạn. Câu hỏi cũng được chép vào bộ nhớ tạm; nếu ô chat còn trống thì dán vào rồi gửi. Claude cần được bật tính năng tìm kiếm web để mở được link bài.
 
 ## Bật GitHub Pages (làm một lần)
 

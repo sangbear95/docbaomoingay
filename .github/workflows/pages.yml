@@ -23,6 +23,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Lấy lại tóm tắt đã làm ở lần chạy trước
+        uses: actions/cache@v4
+        with:
+          path: cache
+          key: article-cache-${{ github.run_id }}
+          restore-keys: article-cache-
       - name: Tạo trang
         run: python build.py
       - uses: actions/configure-pages@v5
