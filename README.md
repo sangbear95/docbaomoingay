@@ -1,12 +1,12 @@
 # Đọc báo mỗi ngày
 
-Trang tổng hợp tin mới nhất từ **VnExpress**, **Tuổi Trẻ** và **Thanh Niên**, tự cập nhật mỗi 30 phút.
+Trang tổng hợp tin từ **VnExpress**, **Tuổi Trẻ** và **Thanh Niên**, chia theo chuyên mục (Thời sự, Thế giới, Kinh tế, Thể thao, Giải trí, Pháp luật, Giáo dục, Sức khỏe, Công nghệ), tự cập nhật mỗi 30 phút.
 
 Trang web: https://sangbear95.github.io/docbaomoingay/
 
 ## Cách hoạt động
 
-1. `build.py` đọc RSS của các báo, gộp lại, bỏ bài trùng, sắp xếp theo thời gian và tạo file `site/index.html`.
+1. `build.py` đọc RSS "tin mới nhất" và RSS từng chuyên mục của các báo, gộp lại (bài nằm ở nhiều chuyên mục chỉ hiện một lần), sắp xếp theo thời gian và tạo file `site/index.html`.
 2. `summarize.py` tải các bài mới và chọn ra vài câu tóm tắt.
 3. GitHub Actions (`.github/workflows/pages.yml`) chạy script mỗi 30 phút rồi đăng trang lên GitHub Pages.
 
@@ -32,6 +32,8 @@ python3 build.py
 
 Sau đó mở file `site/index.html` bằng trình duyệt. Không cần cài thư viện, chỉ cần Python 3.9 trở lên.
 
-## Thêm hoặc bớt báo
+## Thêm hoặc bớt báo, chuyên mục
 
-Sửa danh sách `SOURCES` ở đầu file `build.py`, mỗi dòng gồm tên báo, mã ngắn, link RSS và màu nhận diện.
+- Danh sách chuyên mục chung nằm ở `CATEGORIES` đầu file `build.py`.
+- Mỗi báo trong `SOURCES` có link RSS tin mới nhất (`latest`) và link RSS cho từng chuyên mục (`categories`). Một chuyên mục có thể ghi nhiều link dự phòng; script dùng link đầu tiên đọc được.
+- Link nào không đọc được sẽ hiện trong log của GitHub Actions, dạng `Tuổi Trẻ / Công nghệ: LỖI - ...`.

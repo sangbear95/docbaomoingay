@@ -20,14 +20,74 @@ from pathlib import Path
 
 import summarize
 
-# Danh sách nguồn: (tên hiển thị, mã ngắn, link RSS, màu nhận diện)
-SOURCES = [
-    ("VnExpress", "vnexpress", "https://vnexpress.net/rss/tin-moi-nhat.rss", "#9f224e"),
-    ("Tuổi Trẻ", "tuoitre", "https://tuoitre.vn/rss/tin-moi-nhat.rss", "#ed1c24"),
-    ("Thanh Niên", "thanhnien", "https://thanhnien.vn/rss/home.rss", "#0b5ea8"),
+# Chuyên mục chung cho cả ba báo: (mã, tên hiển thị)
+CATEGORIES = [
+    ("thoi-su", "Thời sự"),
+    ("the-gioi", "Thế giới"),
+    ("kinh-te", "Kinh tế"),
+    ("the-thao", "Thể thao"),
+    ("giai-tri", "Giải trí"),
+    ("phap-luat", "Pháp luật"),
+    ("giao-duc", "Giáo dục"),
+    ("suc-khoe", "Sức khỏe"),
+    ("cong-nghe", "Công nghệ"),
 ]
 
-MAX_PER_SOURCE = 50
+# Mỗi báo: tin mới nhất + RSS từng chuyên mục. Một chuyên mục có thể ghi nhiều
+# link dự phòng (báo hay đổi tên mục); script dùng link đầu tiên đọc được.
+SOURCES = [
+    {
+        "name": "VnExpress", "id": "vnexpress", "color": "#9f224e",
+        "base": "https://vnexpress.net/rss/",
+        "latest": ["tin-moi-nhat.rss"],
+        "categories": {
+            "thoi-su": ["thoi-su.rss"],
+            "the-gioi": ["the-gioi.rss"],
+            "kinh-te": ["kinh-doanh.rss"],
+            "the-thao": ["the-thao.rss"],
+            "giai-tri": ["giai-tri.rss"],
+            "phap-luat": ["phap-luat.rss"],
+            "giao-duc": ["giao-duc.rss"],
+            "suc-khoe": ["suc-khoe.rss"],
+            "cong-nghe": ["khoa-hoc-cong-nghe.rss", "so-hoa.rss", "khoa-hoc.rss"],
+        },
+    },
+    {
+        "name": "Tuổi Trẻ", "id": "tuoitre", "color": "#ed1c24",
+        "base": "https://tuoitre.vn/rss/",
+        "latest": ["tin-moi-nhat.rss"],
+        "categories": {
+            "thoi-su": ["thoi-su.rss"],
+            "the-gioi": ["the-gioi.rss"],
+            "kinh-te": ["kinh-doanh.rss"],
+            "the-thao": ["the-thao.rss"],
+            "giai-tri": ["giai-tri.rss", "van-hoa.rss"],
+            "phap-luat": ["phap-luat.rss"],
+            "giao-duc": ["giao-duc.rss"],
+            "suc-khoe": ["suc-khoe.rss"],
+            "cong-nghe": ["cong-nghe.rss", "nhip-song-so.rss", "khoa-hoc.rss"],
+        },
+    },
+    {
+        "name": "Thanh Niên", "id": "thanhnien", "color": "#0b5ea8",
+        "base": "https://thanhnien.vn/rss/",
+        "latest": ["home.rss"],
+        "categories": {
+            "thoi-su": ["thoi-su.rss"],
+            "the-gioi": ["the-gioi.rss"],
+            "kinh-te": ["kinh-te.rss"],
+            "the-thao": ["the-thao.rss"],
+            "giai-tri": ["giai-tri.rss", "van-hoa.rss"],
+            "phap-luat": ["thoi-su/phap-luat.rss", "phap-luat.rss"],
+            "giao-duc": ["giao-duc.rss"],
+            "suc-khoe": ["suc-khoe.rss"],
+            "cong-nghe": ["cong-nghe.rss", "cong-nghe-game.rss"],
+        },
+    },
+]
+
+MAX_LATEST = 50        # số bài lấy từ RSS "tin mới nhất" của mỗi báo
+MAX_PER_CATEGORY = 20  # số bài lấy từ mỗi chuyên mục của mỗi báo
 TIMEOUT = 20
 USER_AGENT = "Mozilla/5.0 (compatible; docbaomoingay/1.0; +https://github.com/sangbear95/docbaomoingay)"
 VN_TZ = timezone(timedelta(hours=7))
@@ -98,7 +158,7 @@ def link_allowed(link: str, domain: str) -> bool:
     return url.scheme in ("http", "https") and (host == domain or host.endswith("." + domain))
 
 
-def parse_feed(data: bytes, source_name: str, source_id: str, domain: str) -> list[dict]:
+def parse_feed(data: bytes, source_name: str, source_id: str, domain: str, limit: int) -> list[dict]:
     root = ET.fromstring(data)
     articles = []
     rejected = 0
@@ -124,50 +184,80 @@ def parse_feed(data: bytes, source_name: str, source_id: str, domain: str) -> li
             "summary": summary,
             "image": find_image(item, description),
             "published": parse_date(child_text(item, "pubDate")),
+            "cats": set(),
         })
     if rejected:
         print(f"  {source_name}: bỏ {rejected} bài có link không thuộc {domain}", file=sys.stderr)
-    return articles[:MAX_PER_SOURCE]
+    return articles[:limit]
+
+
+def load_feed(source: dict, paths: list[str], limit: int) -> list[dict]:
+    """Thử lần lượt các link RSS dự phòng, trả về bài của link đầu tiên đọc được."""
+    domain = urllib.parse.urlsplit(source["base"]).hostname.removeprefix("www.")
+    last_error = None
+    for path in paths:
+        try:
+            items = parse_feed(fetch(source["base"] + path), source["name"], source["id"], domain, limit)
+            if items:
+                return items
+            last_error = "RSS không có bài nào"
+        except Exception as exc:
+            last_error = exc
+    raise RuntimeError(f"{', '.join(paths)}: {last_error}")
 
 
 def collect() -> tuple[list[dict], list[str]]:
-    def load(source):
-        name, sid, url, _ = source
-        domain = urllib.parse.urlsplit(url).hostname.removeprefix("www.")
-        return parse_feed(fetch(url), name, sid, domain)
+    jobs = []  # (báo, mã chuyên mục hoặc None nếu là tin mới nhất, các link, giới hạn)
+    for src in SOURCES:
+        jobs.append((src, None, src["latest"], MAX_LATEST))
+        for cat, paths in src["categories"].items():
+            jobs.append((src, cat, paths, MAX_PER_CATEGORY))
 
-    articles, errors = [], []
-    with ThreadPoolExecutor(max_workers=len(SOURCES)) as pool:
-        futures = {pool.submit(load, s): s for s in SOURCES}
-        for future, source in futures.items():
+    cat_names = dict(CATEGORIES)
+    by_link: dict[str, dict] = {}
+    ok_feeds = {src["id"]: 0 for src in SOURCES}
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futures = [(pool.submit(load_feed, src, paths, limit), src, cat) for src, cat, paths, limit in jobs]
+        for future, src, cat in futures:
+            label = f"{src['name']} / {cat_names.get(cat, 'Tin mới nhất')}"
             try:
                 items = future.result()
-                print(f"  {source[0]}: {len(items)} bài")
-                articles.extend(items)
-            except Exception as exc:  # một nguồn lỗi thì vẫn chạy các nguồn khác
-                print(f"  {source[0]}: LỖI - {exc}", file=sys.stderr)
-                errors.append(source[0])
+            except Exception as exc:  # một chuyên mục lỗi thì vẫn chạy phần còn lại
+                print(f"  {label}: LỖI - {exc}", file=sys.stderr)
+                continue
+            ok_feeds[src["id"]] += 1
+            for a in items:
+                key = a["link"].split("?")[0].split("#")[0]
+                kept = by_link.setdefault(key, a)   # bài trùng giữa các chuyên mục chỉ giữ một
+                if cat:
+                    kept["cats"].add(cat)
 
-    seen, unique = set(), []
-    for a in articles:
-        key = a["link"].split("?")[0]
-        if key not in seen:
-            seen.add(key)
-            unique.append(a)
+    articles = list(by_link.values())
+    for src in SOURCES:
+        n = sum(1 for a in articles if a["source_id"] == src["id"])
+        print(f"  {src['name']}: đọc được {ok_feeds[src['id']]}/{len(src['categories']) + 1} RSS, {n} bài")
+    errors = [src["name"] for src in SOURCES if ok_feeds[src["id"]] == 0]
+
     oldest = datetime(1970, 1, 1, tzinfo=VN_TZ)
-    unique.sort(key=lambda a: a["published"] or oldest, reverse=True)
-    return unique, errors
+    articles.sort(key=lambda a: a["published"] or oldest, reverse=True)
+    return articles, errors
 
 
 def render(articles: list[dict], errors: list[str]) -> str:
     e = html.escape
     now = datetime.now(VN_TZ)
-    colors = {sid: color for _, sid, _, color in SOURCES}
+    colors = {src["id"]: src["color"] for src in SOURCES}
+    cat_names = dict(CATEGORIES)
 
-    tabs = ['<button class="tab active" data-filter="all">Tất cả</button>']
-    for name, sid, _, _ in SOURCES:
-        count = sum(1 for a in articles if a["source_id"] == sid)
-        tabs.append(f'<button class="tab" data-filter="{sid}">{e(name)} <span>{count}</span></button>')
+    tabs = [f'<button class="tab" data-cat="all">Tất cả <span>{len(articles)}</span></button>']
+    for cid, name in CATEGORIES:
+        count = sum(1 for a in articles if cid in a["cats"])
+        if count:
+            tabs.append(f'<button class="tab" data-cat="{cid}">{e(name)} <span>{count}</span></button>')
+
+    chips = ['<button class="chip" data-src="all">Mọi báo</button>']
+    for src in SOURCES:
+        chips.append(f'<button class="chip" data-src="{src["id"]}" style="--c:{src["color"]}">{e(src["name"])}</button>')
 
     cards = []
     for a in articles:
@@ -186,12 +276,14 @@ def render(articles: list[dict], errors: list[str]) -> str:
             '<ul class="quick" hidden>' + "".join(f"<li>{e(q)}</li>" for q in quick) + "</ul>"
             if quick else ""
         )
+        cats = [cat_names[c] for c, _ in CATEGORIES if c in a["cats"]]
+        cat_label = f'<span class="cat">{e(" · ".join(cats[:2]))}</span>' if cats else ""
         cards.append(f"""
-    <article class="card" data-source="{a['source_id']}">
+    <article class="card" data-source="{a['source_id']}" data-cats="{' '.join(sorted(a['cats']))}">
       <a href="{e(a['link'])}" target="_blank" rel="noopener">
         {img}
         <div class="body">
-          <div class="meta"><span class="badge" style="--c:{colors[a['source_id']]}">{e(a['source'])}</span>
+          <div class="meta"><span class="badge" style="--c:{colors[a['source_id']]}">{e(a['source'])}</span>{cat_label}
             <time datetime="{iso}" title="{label}">{label}</time></div>
           <h2>{e(a['title'])}</h2>
           <p>{e(a['summary'])}</p>
@@ -210,6 +302,7 @@ def render(articles: list[dict], errors: list[str]) -> str:
         updated_iso=now.isoformat(),
         updated=now.strftime("%H:%M ngày %d/%m/%Y"),
         tabs="\n      ".join(tabs),
+        chips="\n      ".join(chips),
         warning=warning,
         cards="".join(cards) or '<p class="empty">Chưa có tin nào.</p>',
     )
@@ -244,9 +337,10 @@ TEMPLATE = """<!doctype html>
     margin: 0; background: var(--bg); color: var(--text);
     font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   }}
-  header {{
+  header {{ padding: 12px 16px 0; }}
+  .filters {{
     position: sticky; top: 0; z-index: 10; background: var(--bg);
-    border-bottom: 1px solid var(--line); padding: 12px 16px 0;
+    border-bottom: 1px solid var(--line); padding: 0 16px;
   }}
   .wrap {{ max-width: 760px; margin: 0 auto; }}
   .top {{ display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }}
@@ -263,6 +357,14 @@ TEMPLATE = """<!doctype html>
   }}
   .tab span {{ font-size: 12px; opacity: .7; }}
   .tab.active {{ color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }}
+  .chips {{ display: flex; gap: 6px; overflow-x: auto; padding: 8px 0 10px; scrollbar-width: none; }}
+  .chip {{
+    flex: none; font: inherit; font-size: 13px; color: var(--muted); background: none; cursor: pointer;
+    border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px;
+  }}
+  .chip.active {{ color: var(--card); background: var(--c, var(--text)); border-color: var(--c, var(--text)); }}
+  .cat {{ color: var(--muted); }}
+  .cat::before {{ content: "·"; margin-right: 8px; }}
   main {{ padding: 12px 16px 40px; }}
   .card {{ background: var(--card); border: 1px solid var(--line); border-radius: 10px; margin-bottom: 10px; overflow: hidden; }}
   .card > a {{ display: flex; gap: 14px; padding: 12px; color: inherit; text-decoration: none; }}
@@ -314,11 +416,18 @@ TEMPLATE = """<!doctype html>
       <span class="updated">Cập nhật <time id="updated" datetime="{updated_iso}">{updated}</time></span>
     </div>
     <input class="search" id="q" type="search" placeholder="Tìm tin…" autocomplete="off">
-    <nav class="tabs">
-      {tabs}
-    </nav>
   </div>
 </header>
+<div class="filters">
+  <div class="wrap">
+    <nav class="tabs" aria-label="Chuyên mục">
+      {tabs}
+    </nav>
+    <div class="chips" role="group" aria-label="Báo">
+      {chips}
+    </div>
+  </div>
+</div>
 <main class="wrap">
   {warning}
   {cards}
@@ -328,9 +437,13 @@ TEMPLATE = """<!doctype html>
 <script>
   const cards = [...document.querySelectorAll('.card')];
   const tabs = [...document.querySelectorAll('.tab')];
+  const chips = [...document.querySelectorAll('.chip')];
   const q = document.getElementById('q');
-  let filter = 'all';
-  try {{ filter = localStorage.getItem('filter') || 'all'; }} catch (e) {{}}
+  let cat = 'all', src = 'all';
+  try {{ cat = localStorage.getItem('cat') || 'all'; src = localStorage.getItem('src') || localStorage.getItem('filter') || 'all'; }} catch (e) {{}}
+  if (!tabs.some(t => t.dataset.cat === cat)) cat = 'all';
+  if (!chips.some(c => c.dataset.src === src)) src = 'all';
+  cards.forEach(c => c._cats = c.dataset.cats.split(' '));
   // Xóa khóa API và tóm tắt AI do bản cũ (đã gỡ) để lại trong trình duyệt.
   try {{ localStorage.removeItem('anthropic_api_key'); localStorage.removeItem('ai_summaries'); }} catch (e) {{}}
 
@@ -340,22 +453,35 @@ TEMPLATE = """<!doctype html>
   function apply() {{
     const term = norm(q.value.trim());
     let shown = 0;
-    tabs.forEach(t => t.classList.toggle('active', t.dataset.filter === filter));
+    tabs.forEach(t => t.classList.toggle('active', t.dataset.cat === cat));
+    chips.forEach(c => c.classList.toggle('active', c.dataset.src === src));
     cards.forEach(c => {{
-      const ok = (filter === 'all' || c.dataset.source === filter) && (!term || c._text.includes(term));
+      const ok = (cat === 'all' || c._cats.includes(cat))
+        && (src === 'all' || c.dataset.source === src)
+        && (!term || c._text.includes(term));
       c.classList.toggle('hidden', !ok);
       if (ok) shown++;
     }});
     document.getElementById('none').classList.toggle('hidden', shown > 0 || !cards.length);
   }}
   tabs.forEach(t => t.addEventListener('click', () => {{
-    filter = t.dataset.filter;
-    try {{ localStorage.setItem('filter', filter); }} catch (e) {{}}
+    cat = t.dataset.cat;
+    try {{ localStorage.setItem('cat', cat); }} catch (e) {{}}
+    apply();
+    window.scrollTo({{ top: 0 }});
+  }}));
+  chips.forEach(c => c.addEventListener('click', () => {{
+    src = c.dataset.src;
+    try {{ localStorage.setItem('src', src); }} catch (e) {{}}
     apply();
   }}));
   q.addEventListener('input', apply);
-  if (!tabs.some(t => t.dataset.filter === filter)) filter = 'all';
   apply();
+  // Cuộn hàng tab để tab/báo đang chọn nằm trong màn hình.
+  for (const el of [document.querySelector('.tab.active'), document.querySelector('.chip.active')]) {{
+    const row = el.parentElement;
+    row.scrollLeft = el.offsetLeft - row.offsetLeft - (row.clientWidth - el.offsetWidth) / 2;
+  }}
 
   let toastTimer;
   function toast(msg) {{

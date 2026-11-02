@@ -18,7 +18,7 @@ from typing import Callable
 
 CACHE_FILE = Path(__file__).parent / "cache" / "summaries.json"
 RETRY_FAILED_AFTER = 3 * 3600   # bài lỗi thì 3 tiếng sau mới thử lại
-MAX_FETCH_PER_RUN = 200
+MAX_FETCH_PER_RUN = 500
 WORKERS = 6
 SENTENCES = 3
 
