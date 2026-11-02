@@ -88,15 +88,29 @@ def find_image(item: ET.Element, description: str) -> str:
     return html.unescape(m.group(1)) if m else ""
 
 
-def parse_feed(data: bytes, source_name: str, source_id: str) -> list[dict]:
+def link_allowed(link: str, domain: str) -> bool:
+    """Chỉ nhận link http(s) thuộc đúng tên miền của báo (kể cả tên miền con)."""
+    try:
+        url = urllib.parse.urlsplit(link)
+    except ValueError:
+        return False
+    host = (url.hostname or "").lower()
+    return url.scheme in ("http", "https") and (host == domain or host.endswith("." + domain))
+
+
+def parse_feed(data: bytes, source_name: str, source_id: str, domain: str) -> list[dict]:
     root = ET.fromstring(data)
     articles = []
+    rejected = 0
     for item in root.iter():
         if item.tag.rsplit("}", 1)[-1] != "item":
             continue
         title = strip_tags(child_text(item, "title"))
         link = child_text(item, "link")
-        if not title or not link.startswith("http"):
+        if not title:
+            continue
+        if not link_allowed(link, domain):
+            rejected += 1
             continue
         description = child_text(item, "description")
         summary = strip_tags(description)
@@ -111,13 +125,16 @@ def parse_feed(data: bytes, source_name: str, source_id: str) -> list[dict]:
             "image": find_image(item, description),
             "published": parse_date(child_text(item, "pubDate")),
         })
+    if rejected:
+        print(f"  {source_name}: bỏ {rejected} bài có link không thuộc {domain}", file=sys.stderr)
     return articles[:MAX_PER_SOURCE]
 
 
 def collect() -> tuple[list[dict], list[str]]:
     def load(source):
         name, sid, url, _ = source
-        return parse_feed(fetch(url), name, sid)
+        domain = urllib.parse.urlsplit(url).hostname.removeprefix("www.")
+        return parse_feed(fetch(url), name, sid, domain)
 
     articles, errors = [], []
     with ThreadPoolExecutor(max_workers=len(SOURCES)) as pool:
@@ -210,6 +227,7 @@ TEMPLATE = """<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Đọc báo mỗi ngày</title>
 <meta name="description" content="Tin mới nhất từ VnExpress, Tuổi Trẻ, Thanh Niên">
+<meta name="robots" content="noindex, nofollow">
 <style>
   :root {{
     --bg: #f4f4f1; --card: #ffffff; --text: #1d1d1b; --muted: #6b6b66;
@@ -313,6 +331,8 @@ TEMPLATE = """<!doctype html>
   const q = document.getElementById('q');
   let filter = 'all';
   try {{ filter = localStorage.getItem('filter') || 'all'; }} catch (e) {{}}
+  // Xóa khóa API và tóm tắt AI do bản cũ (đã gỡ) để lại trong trình duyệt.
+  try {{ localStorage.removeItem('anthropic_api_key'); localStorage.removeItem('ai_summaries'); }} catch (e) {{}}
 
   const norm = s => s.toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').replace(/đ/g, 'd');
   cards.forEach(c => c._text = norm(c.querySelector('a').textContent));
