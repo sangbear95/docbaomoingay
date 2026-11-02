@@ -77,7 +77,7 @@
       ? `<div class="thumb"><img ${imgAttrs(it.img, src.id, lead)} alt="" ${lead ? 'fetchpriority="high"' : 'loading="lazy"'} decoding="async" referrerpolicy="no-referrer" data-i="${it.i}"></div>`
       : "";
     const quickBtn = it.hasQuick
-      ? `<button class="act quick-btn" type="button" aria-expanded="false">${icon("list")}<span class="label">Tóm tắt nhanh</span>${icon("chev", "chev")}</button>`
+      ? `<button class="act quick-btn" type="button" aria-expanded="false">${icon("list")}<span class="label">Tóm tắt</span>${icon("chev", "chev")}</button>`
       : "";
     return `<article class="card s-${src.id}${hasImg ? " has-img" : ""}${lead ? " lead" : ""}" data-i="${it.i}">
 <a class="card-link" href="${esc(it.url)}" target="_blank" rel="noopener">${img}
@@ -130,15 +130,36 @@
     updateMore();
   }
 
+  const filters = $(".filters");
+  const masthead = $(".masthead");
+  // Vị trí gốc của thanh lọc (ngay dưới đầu trang). Không dùng filters.offsetTop vì khi đã dính
+  // ở đầu màn hình, giá trị đó thay đổi theo vị trí cuộn.
+  const filtersHome = () => masthead.offsetTop + masthead.offsetHeight;
+  // Đưa nút đang chọn vào giữa hàng (hàng tab cuộn ngang trên điện thoại).
+  function centerInRow(el, smooth) {
+    if (!el) return;
+    const row = el.parentElement;
+    row.scrollTo({ left: el.offsetLeft - row.offsetLeft - (row.clientWidth - el.offsetWidth) / 2, behavior: smooth ? "smooth" : "auto" });
+  }
   tabs.forEach((t) => t.addEventListener("click", () => {
     cat = t.dataset.cat; store.set("cat", cat); render();
-    const filters = $(".filters");
-    if (filters.getBoundingClientRect().top <= 0) window.scrollTo({ top: filters.offsetTop });
+    centerInRow(t, true);
+    if (window.scrollY > filtersHome()) window.scrollTo({ top: filtersHome() });
   }));
-  chips.forEach((c) => c.addEventListener("click", () => { src = c.dataset.src; store.set("src", src); render(); }));
+  chips.forEach((c) => c.addEventListener("click", () => {
+    src = c.dataset.src; store.set("src", src); render();
+    centerInRow(c, true);
+  }));
   let searchTimer;
   q.addEventListener("input", () => { clearTimeout(searchTimer); searchTimer = setTimeout(render, 120); });
+  q.addEventListener("keydown", (ev) => { if (ev.key === "Enter") q.blur(); });  // ẩn bàn phím điện thoại
   moreBtn.addEventListener("click", showMore);
+  // Tự hiện thêm tin khi cuộn gần cuối danh sách.
+  if ("IntersectionObserver" in window) {
+    new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting) && !moreWrap.hidden) showMore();
+    }, { rootMargin: "0px 0px 900px 0px" }).observe(moreWrap);
+  }
 
   // Ảnh lỗi: bỏ khung ảnh; nếu là tin nổi bật thì dựng lại để chọn tin khác.
   grid.addEventListener("error", (ev) => {
@@ -159,12 +180,8 @@
 
   render();
 
-  // Cuộn hàng tab để mục / báo đang chọn nằm trong màn hình.
-  for (const el of [$(".tab.active"), $(".chip.active")]) {
-    if (!el) continue;
-    const row = el.parentElement;
-    row.scrollLeft = el.offsetLeft - row.offsetLeft - (row.clientWidth - el.offsetWidth) / 2;
-  }
+  centerInRow($(".tab.active"));
+  centerInRow($(".chip.active"));
 
   // ---------- tóm tắt nhanh (tải riêng, khi rảnh hoặc khi bấm) ----------
   let quickPromise = null;
@@ -206,7 +223,7 @@
         }
       }
       quickBtn.setAttribute("aria-expanded", String(!box.hidden));
-      $(".label", quickBtn).textContent = box.hidden ? "Tóm tắt nhanh" : "Thu gọn";
+      $(".label", quickBtn).textContent = box.hidden ? "Tóm tắt" : "Thu gọn";
       return;
     }
 
@@ -223,8 +240,16 @@
 
   // ---------- ngày hôm nay, giờ tương đối ----------
   const dateline = $("#dateline");
-  const today = new Intl.DateTimeFormat("vi-VN", { weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(new Date());
-  dateline.textContent = today.charAt(0).toUpperCase() + today.slice(1);
+  const compact = matchMedia("(max-width: 719px), (max-height: 500px)");
+  function showDate() {
+    const opts = compact.matches
+      ? { weekday: "long", day: "numeric", month: "numeric" }                 // "Thứ Hai, 2/11"
+      : { weekday: "long", day: "numeric", month: "long", year: "numeric" };  // "Thứ Hai, 2 tháng 11, 2026"
+    const text = new Intl.DateTimeFormat("vi-VN", opts).format(new Date());
+    dateline.textContent = text.charAt(0).toUpperCase() + text.slice(1);
+  }
+  showDate();
+  compact.addEventListener?.("change", showDate);
   function tick() {
     for (const t of $$("time[data-t]")) t.textContent = ago(Number(t.dataset.t));
     const up = $(".updated time");
@@ -234,20 +259,43 @@
   setInterval(tick, 60000);
 
   // ---------- chế độ sáng/tối ----------
+  // Màu thanh trạng thái / thanh địa chỉ trên điện thoại theo đúng chế độ đang chọn.
+  function syncThemeColor() {
+    const bg = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim();
+    for (const m of $$('meta[name="theme-color"]')) { m.content = bg; m.removeAttribute("media"); }
+  }
+  if (document.documentElement.dataset.theme) syncThemeColor();
   $("#theme-toggle").addEventListener("click", () => {
     const root = document.documentElement;
     const dark = root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
     root.dataset.theme = dark ? "light" : "dark";
     store.set("theme", root.dataset.theme);
+    syncThemeColor();
   });
 
-  // ---------- nút lên đầu trang ----------
+  // ---------- cuộn trang: ẩn thanh lọc khi đọc, nút lên đầu trang ----------
+  // Trên điện thoại: cuộn xuống thì ẩn thanh lọc cho rộng chỗ đọc, cuộn lên thì hiện lại cùng nút lên đầu trang.
   const toTop = $("#to-top");
-  let ticking = false;
+  const phone = matchMedia("(max-width: 719px), (max-height: 500px)");
+  let lastY = window.scrollY, ticking = false;
+  function onScroll() {
+    const y = window.scrollY, dy = y - lastY;
+    const home = filtersHome();
+    const stuck = y > home;
+    filters.classList.toggle("is-stuck", stuck);
+    if (phone.matches && document.activeElement !== q) {
+      if (dy > 6 && y > home + 200) filters.classList.add("is-hidden");
+      else if (dy < -6 || !stuck) filters.classList.remove("is-hidden");
+      if (Math.abs(dy) > 6) toTop.hidden = !(y > 900 && dy < 0);
+    } else {
+      filters.classList.remove("is-hidden");
+      toTop.hidden = y < 900;
+    }
+    if (Math.abs(dy) > 6 || y < 10) lastY = y;
+    ticking = false;
+  }
   window.addEventListener("scroll", () => {
-    if (ticking) return;
-    ticking = true;
-    requestAnimationFrame(() => { toTop.hidden = window.scrollY < 900; ticking = false; });
+    if (!ticking) { ticking = true; requestAnimationFrame(onScroll); }
   }, { passive: true });
   toTop.addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
 })();

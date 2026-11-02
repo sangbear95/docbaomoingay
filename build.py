@@ -403,6 +403,13 @@ TEMPLATE = """<!doctype html>
 <meta name="theme-color" content="#f5f3ee" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#121210" media="(prefers-color-scheme: dark)">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23b42318'/%3E%3Ctext x='32' y='45' font-family='Georgia,serif' font-size='38' font-weight='700' text-anchor='middle' fill='%23fff'%3EĐ%3C/text%3E%3C/svg%3E">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-title" content="Đọc báo">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="format-detection" content="telephone=no">
 <script>try{var t=localStorage.getItem('theme');if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
 <link rel="preload" href="fonts/BeVietnamPro-400.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/Literata-600.woff2" as="font" type="font/woff2" crossorigin>
@@ -425,7 +432,7 @@ TEMPLATE = """<!doctype html>
     </div>
     <h1 class="brand">Đọc báo <span>mỗi ngày</span></h1>
     <p class="tagline">Tin mới từ %%SOURCES%%, tự cập nhật mỗi 30 phút.</p>
-    <label class="search">%%ICON_SEARCH%%<input id="q" type="search" placeholder="Tìm tin theo từ khóa…" autocomplete="off" aria-label="Tìm tin"></label>
+    <label class="search">%%ICON_SEARCH%%<input id="q" type="search" placeholder="Tìm tin theo từ khóa…" autocomplete="off" enterkeyhint="search" aria-label="Tìm tin"></label>
   </div>
 </header>
 
