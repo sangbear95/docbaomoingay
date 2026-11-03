@@ -66,9 +66,11 @@ button { font: inherit; color: inherit; }
 [hidden] { display: none !important; }
 .wrap {
   width: 100%; max-width: 1160px; margin: 0 auto;
-  padding: 0 max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left));
+  padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right));
 }
-@media (min-width: 720px) { .wrap { padding: 0 max(24px, env(safe-area-inset-right)) 0 max(24px, env(safe-area-inset-left)); } }
+@media (min-width: 720px) {
+  .wrap { padding-left: max(24px, env(safe-area-inset-left)); padding-right: max(24px, env(safe-area-inset-right)); }
+}
 .icon { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
 /* ---------- đầu trang ---------- */
@@ -138,6 +140,7 @@ button { font: inherit; color: inherit; }
   font-size: 15px; font-weight: 400; color: var(--text-2); white-space: nowrap; transition: color .15s;
 }
 .tab:first-child { padding-left: 0; }
+.tab:focus-visible { outline: none; border-radius: 8px; box-shadow: inset 0 0 0 2px var(--focus); }
 .tab:hover { color: var(--text); }
 .tab .count { display: none; margin-left: 4px; font-size: 12px; font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; }
 .tab.active .count { display: inline; }
@@ -149,7 +152,7 @@ button { font: inherit; color: inherit; }
 .tab:first-child.active::after { left: 0; }
 
 /* ---------- danh sách tin ---------- */
-main { padding-top: 18px; padding-bottom: 48px; }
+main { padding-top: 28px; padding-bottom: 48px; }
 .notice {
   display: flex; gap: 10px; align-items: flex-start; margin: 0 0 16px; padding: 12px 14px;
   border-radius: 12px; font-size: 14px; background: #fff3d6; color: #6b4b00;
@@ -330,7 +333,7 @@ main { padding-top: 18px; padding-bottom: 48px; }
   .tab { padding: 12px 11px 11px; font-size: 15px; }
   .tab.active::after { left: 11px; right: 11px; }
 
-  main { padding-top: 12px; }
+  main { padding-top: 16px; }
   .grid { gap: 10px; }
 
   .card-link { gap: 12px; padding: 12px 12px 8px; }
