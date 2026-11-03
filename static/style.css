@@ -313,7 +313,7 @@ main { padding-top: 28px; padding-bottom: 48px; }
 /* ---------- tối ưu cho điện thoại (màn hẹp hoặc màn ngang thấp) ---------- */
 @media (max-width: 719px), (max-height: 500px) {
   /* Đầu trang gọn: tên trang + nút sáng/tối một hàng, ngày + giờ cập nhật một hàng, rồi ô tìm kiếm. */
-  .masthead { padding: calc(12px + env(safe-area-inset-top)) 0 12px; }
+  .masthead { padding: calc(12px + env(safe-area-inset-top)) 0 16px; }
   .masthead .wrap {
     display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 12px;
     grid-template-areas: "brand theme" "date updated" "search search";
@@ -333,7 +333,7 @@ main { padding-top: 28px; padding-bottom: 48px; }
   .tab { padding: 12px 11px 11px; font-size: 15px; }
   .tab.active::after { left: 11px; right: 11px; }
 
-  main { padding-top: 16px; }
+  main { padding-top: 20px; }
   .grid { gap: 10px; }
 
   .card-link { gap: 12px; padding: 12px 12px 8px; }
